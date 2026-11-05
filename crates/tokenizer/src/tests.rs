@@ -180,11 +180,20 @@ fn rejects_bad_vocab_metadata_without_panicking() {
 
     let mut missing_bos = mini().meta(true, true);
     missing_bos.values.remove("tokenizer.ggml.bos_token_id");
-    expect_gguf(from_metadata(&missing_bos));
+    let loaded = from_metadata(&missing_bos).unwrap();
+    assert_eq!(loaded.bos_id(), None);
+    assert_eq!(loaded.eos_id(), Some(mini().eos));
+    let missing_bos_encode = loaded.encode("a", true).unwrap_err().to_string();
+    assert!(
+        missing_bos_encode.starts_with("tokenizer:"),
+        "{missing_bos_encode}"
+    );
 
     let mut missing_eos = mini().meta(true, true);
     missing_eos.values.remove("tokenizer.ggml.eos_token_id");
-    expect_gguf(from_metadata(&missing_eos));
+    let loaded = from_metadata(&missing_eos).unwrap();
+    assert_eq!(loaded.eos_id(), None);
+    assert_eq!(loaded.bos_id(), Some(mini().bos));
 
     let mut negative_bos = mini().meta(true, true);
     negative_bos.values.insert(
@@ -307,7 +316,7 @@ fn loads_when_scores_and_types_are_absent_or_longer() {
 }
 
 #[test]
-fn infers_byte_pieces_when_token_type_is_absent() {
+fn absent_token_types_keep_byte_spellings_as_normal_text() {
     let mut vocab = Vocab::llama();
     vocab.push("\u{2581}", TOKEN_NORMAL, 0.0);
     vocab.push("<0x0A>", TOKEN_BYTE, 0.0);
@@ -317,11 +326,11 @@ fn infers_byte_pieces_when_token_type_is_absent() {
         ids,
         vec![loaded_id(&vocab, "\u{2581}"), loaded_id(&vocab, "<0x0A>")]
     );
-    assert_eq!(loaded.decode(&ids).unwrap(), "\n");
     assert_eq!(
         loaded.decode_token(loaded_id(&vocab, "<0x0A>")).unwrap(),
-        "\n"
+        "<0x0A>"
     );
+    assert_eq!(loaded.decode(&ids).unwrap(), "<0x0A>");
     assert!(!loaded.is_special(loaded_id(&vocab, "<0x0A>")));
 }
 
@@ -471,7 +480,7 @@ fn successive_merges_keep_going_after_a_poor_score() {
 }
 
 #[test]
-fn is_special_covers_control_unknown_unused_and_bos_eos() {
+fn is_special_covers_control_unknown_and_bos_eos() {
     let mut vocab = Vocab::llama();
     let normal = vocab.push("a", TOKEN_NORMAL, 0.0);
     let byte = vocab.push("<0x41>", TOKEN_BYTE, 0.0);
@@ -482,7 +491,7 @@ fn is_special_covers_control_unknown_unused_and_bos_eos() {
     assert!(tok.is_special(vocab.id("<unk>")));
     assert!(tok.is_special(vocab.bos));
     assert!(tok.is_special(vocab.eos));
-    assert!(tok.is_special(unused));
+    assert!(!tok.is_special(unused));
     assert!(!tok.is_special(normal));
     assert!(!tok.is_special(byte));
     assert!(!tok.is_special(user));
@@ -523,7 +532,7 @@ fn user_defined_pieces_are_taken_out_before_metaspace() {
     );
     assert_eq!(
         tok.decode(&tok.encode("a<pad>b", false).unwrap()).unwrap(),
-        "a<pad> b"
+        "a<pad>b"
     );
 
     assert_eq!(

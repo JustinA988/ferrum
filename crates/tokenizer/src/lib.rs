@@ -9,7 +9,7 @@
 use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashMap};
 
-use ferrum_core_types::metadata::{meta_str, meta_u32, required};
+use ferrum_core_types::metadata::{meta_str, optional_u32, required};
 use ferrum_core_types::{
     FerrumError, MetadataView, Tokenizer, TOKEN_BYTE, TOKEN_CONTROL, TOKEN_NORMAL, TOKEN_UNKNOWN,
     TOKEN_UNUSED, TOKEN_USER_DEFINED,
@@ -35,8 +35,8 @@ pub struct SentencePieceTokenizer {
     /// User-defined ids, longest piece first, then smaller id.
     user_defined: Vec<u32>,
     n_vocab: u32,
-    bos_id: u32,
-    eos_id: u32,
+    bos_id: Option<u32>,
+    eos_id: Option<u32>,
 }
 
 #[derive(Debug)]
@@ -48,10 +48,14 @@ struct Piece {
 
 /// Loads a Llama SentencePiece tokenizer from GGUF metadata.
 ///
-/// Missing keys and malformed arrays are [`FerrumError::Gguf`]. A tokenizer
-/// model other than `"llama"` is [`FerrumError::Tokenizer`].
+/// Missing keys and malformed arrays are [`FerrumError::Gguf`]. An empty model
+/// string, or any model other than `"llama"`, is [`FerrumError::Tokenizer`].
+/// BOS and EOS ids are read when those keys are present.
 pub fn from_metadata(meta: &dyn MetadataView) -> Result<SentencePieceTokenizer, FerrumError> {
     let model = meta_str(meta, KEY_MODEL)?;
+    if model.is_empty() {
+        return Err(FerrumError::tokenizer(format!("{KEY_MODEL} is empty")));
+    }
     if model != MODEL_LLAMA {
         return Err(FerrumError::tokenizer(format!(
             "unsupported tokenizer model \"{model}\""
@@ -71,24 +75,19 @@ pub fn from_metadata(meta: &dyn MetadataView) -> Result<SentencePieceTokenizer, 
     let scores = optional_f32s(meta, KEY_SCORES, n_tokens)?;
     let kinds = optional_token_types(meta, KEY_TOKEN_TYPE, n_tokens)?;
 
-    let bos_id = meta_u32(meta, KEY_BOS)?;
-    let eos_id = meta_u32(meta, KEY_EOS)?;
-    if bos_id >= n_vocab {
-        return Err(FerrumError::gguf(format!(
-            "{KEY_BOS}: id is outside the vocab"
-        )));
-    }
-    if eos_id >= n_vocab {
-        return Err(FerrumError::gguf(format!(
-            "{KEY_EOS}: id is outside the vocab"
-        )));
-    }
+    let bos_id = optional_id(meta, KEY_BOS, n_vocab)?;
+    let eos_id = optional_id(meta, KEY_EOS, n_vocab)?;
 
     let mut pieces = Vec::with_capacity(n_tokens);
     let mut token_to_id = HashMap::with_capacity(n_tokens);
     let mut user_defined = Vec::new();
     for id in 0..n_vocab {
         let text = token_values[id as usize].to_string();
+        if text.is_empty() {
+            return Err(FerrumError::gguf(format!(
+                "{KEY_TOKENS}: token {id} is empty"
+            )));
+        }
         if token_to_id.insert(text.clone(), id).is_some() {
             return Err(FerrumError::gguf(format!(
                 "{KEY_TOKENS}: duplicate piece at index {id}"
@@ -96,11 +95,15 @@ pub fn from_metadata(meta: &dyn MetadataView) -> Result<SentencePieceTokenizer, 
         }
         let kind = match &kinds {
             Some(values) => values[id as usize],
-            None if is_uppercase_byte_piece(&text) => TOKEN_BYTE,
             None => TOKEN_NORMAL,
         };
+        if kind == TOKEN_BYTE && parse_byte_piece(&text).is_none() {
+            return Err(FerrumError::gguf(format!(
+                "{KEY_TOKENS}: token {id} is type byte but not <0xHH>"
+            )));
+        }
         let score = scores.as_ref().map_or(0.0, |values| values[id as usize]);
-        if kind == TOKEN_USER_DEFINED && !text.is_empty() {
+        if kind == TOKEN_USER_DEFINED {
             user_defined.push(id);
         }
         pieces.push(Piece { text, score, kind });
@@ -125,7 +128,10 @@ impl Tokenizer for SentencePieceTokenizer {
     fn encode(&self, text: &str, add_bos: bool) -> Result<Vec<u32>, FerrumError> {
         let mut ids = Vec::new();
         if add_bos {
-            ids.push(self.bos_id);
+            let bos = self.bos_id.ok_or_else(|| {
+                FerrumError::tokenizer("add_bos is set but tokenizer.ggml.bos_token_id is missing")
+            })?;
+            ids.push(bos);
         }
         if text.is_empty() {
             return Ok(ids);
@@ -149,11 +155,17 @@ impl Tokenizer for SentencePieceTokenizer {
 
     fn decode(&self, ids: &[u32]) -> Result<String, FerrumError> {
         let mut bytes = Vec::new();
-        for (index, id) in ids.iter().copied().enumerate() {
-            let mut rendered = render_piece(self.piece(id)?)?;
-            if index == 0 && rendered.first() == Some(&b' ') {
+        // The first piece, and the piece after each user-defined token, loses
+        // one leading ASCII space. Those spaces are the metaspaces prefixed
+        // onto raw fragments.
+        let mut strip_space = true;
+        for id in ids {
+            let piece = self.piece(*id)?;
+            let mut rendered = render_piece(piece)?;
+            if strip_space && rendered.first() == Some(&b' ') {
                 rendered.remove(0);
             }
+            strip_space = piece.kind == TOKEN_USER_DEFINED;
             bytes.append(&mut rendered);
         }
         String::from_utf8(bytes).map_err(|_| FerrumError::tokenizer("decoded bytes are not utf-8"))
@@ -170,23 +182,19 @@ impl Tokenizer for SentencePieceTokenizer {
     }
 
     fn bos_id(&self) -> Option<u32> {
-        Some(self.bos_id)
+        self.bos_id
     }
 
     fn eos_id(&self) -> Option<u32> {
-        Some(self.eos_id)
+        self.eos_id
     }
 
     fn is_special(&self, id: u32) -> bool {
-        if id == self.bos_id || id == self.eos_id {
+        if self.bos_id == Some(id) || self.eos_id == Some(id) {
             return true;
         }
         match self.pieces.get(id as usize) {
-            Some(piece) => {
-                piece.kind == TOKEN_CONTROL
-                    || piece.kind == TOKEN_UNKNOWN
-                    || piece.kind == TOKEN_UNUSED
-            }
+            Some(piece) => piece.kind == TOKEN_CONTROL || piece.kind == TOKEN_UNKNOWN,
             None => false,
         }
     }
@@ -257,19 +265,18 @@ fn is_known_token_type(kind: i32) -> bool {
     )
 }
 
-fn is_uppercase_byte_piece(text: &str) -> bool {
-    let bytes = text.as_bytes();
-    bytes.len() == 6
-        && bytes[0] == b'<'
-        && bytes[1] == b'0'
-        && bytes[2] == b'x'
-        && bytes[5] == b'>'
-        && is_uppercase_hex(bytes[3])
-        && is_uppercase_hex(bytes[4])
-}
-
-fn is_uppercase_hex(byte: u8) -> bool {
-    byte.is_ascii_digit() || (b'A'..=b'F').contains(&byte)
+fn optional_id(
+    meta: &dyn MetadataView,
+    key: &str,
+    n_vocab: u32,
+) -> Result<Option<u32>, FerrumError> {
+    let Some(id) = optional_u32(meta, key)? else {
+        return Ok(None);
+    };
+    if id >= n_vocab {
+        return Err(FerrumError::gguf(format!("{key}: id is outside the vocab")));
+    }
+    Ok(Some(id))
 }
 
 fn parse_byte_piece(text: &str) -> Option<u8> {
@@ -350,6 +357,10 @@ fn partition<'a>(text: &'a str, pieces: &[Piece], user_defined: &[u32]) -> Vec<F
 }
 
 fn split_user_defined<'a>(raw: &'a str, needle: &str, id: u32, out: &mut Vec<Fragment<'a>>) {
+    if needle.is_empty() {
+        out.push(Fragment::Raw(raw));
+        return;
+    }
     let mut rest = raw;
     while let Some(found) = rest.find(needle) {
         if found > 0 {
@@ -470,6 +481,9 @@ fn merge_pieces(
         if left_n == 0 || right_n == 0 || span != bigram.size {
             continue;
         }
+        if symbols[left].start.checked_add(left_n) != Some(symbols[right].start) {
+            continue;
+        }
 
         symbols[left].n = span;
         symbols[right].n = 0;
@@ -538,9 +552,7 @@ fn consider_bigram(
     if left_sym.n == 0 || right_sym.n == 0 {
         return;
     }
-    let contiguous = left_sym.start.checked_add(left_sym.n) == Some(right_sym.start);
-    debug_assert!(contiguous, "sentencepiece symbols are not contiguous");
-    if !contiguous {
+    if left_sym.start.checked_add(left_sym.n) != Some(right_sym.start) {
         return;
     }
     let Some(end) = right_sym.start.checked_add(right_sym.n) else {
