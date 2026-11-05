@@ -11,6 +11,7 @@ path = "src/main.rs"
 
 [dependencies]
 ferrum-core-types = { path = "../core-types" }
+ferrum-server = { path = "../server" }
 
 [lints.rust]
 unsafe_code = "forbid"
