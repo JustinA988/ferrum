@@ -7,6 +7,11 @@ description = "Acceptance tests owned by V1"
 
 [dependencies]
 ferrum-core-types = { path = "../../crates/core-types" }
+ferrum-gguf = { path = "../../crates/gguf" }
+ferrum-kernels = { path = "../../crates/kernels" }
+
+[dev-dependencies]
+proptest = "1.6"
 
 [lints.rust]
 unsafe_code = "forbid"

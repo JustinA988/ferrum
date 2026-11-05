@@ -1,0 +1,21 @@
+[workspace]
+resolver = "2"
+
+[package]
+name = "ferrum-kernel-benches"
+version = "0.1.0"
+edition = "2021"
+publish = false
+autobins = false
+autotests = false
+autoexamples = false
+autobenches = false
+
+[dependencies]
+ferrum-core-types = { path = "../../crates/core-types" }
+ferrum-kernels = { path = "../../crates/kernels" }
+criterion = { version = "0.5.1", default-features = false }
+
+[[bench]]
+name = "throughput"
+harness = false

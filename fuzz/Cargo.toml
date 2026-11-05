@@ -1,0 +1,22 @@
+[workspace]
+resolver = "2"
+
+[package]
+name = "ferrum-fuzz"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+ferrum-gguf = { path = "../crates/gguf" }
+
+[[bin]]
+name = "gguf_parse"
+path = "fuzz_targets/gguf_parse.rs"
+test = false
+doc = false
+bench = false
