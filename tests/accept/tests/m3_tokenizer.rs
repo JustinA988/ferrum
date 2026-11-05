@@ -4,7 +4,9 @@
 #![forbid(unsafe_code)]
 
 use std::collections::HashMap;
-use std::path::Path;
+use std::io::Write;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 
 use ferrum_core_types::{
     MetadataArray, MetadataType, MetadataValue, MetadataView, Tokenizer, TOKEN_BYTE, TOKEN_CONTROL,
@@ -108,26 +110,90 @@ fn corpus_round_trip_with_byte_fallback_metadata() {
     assert_eq!(tokenizer.decode(&[]).expect("empty decode"), "");
 }
 
-/// Real TinyLlama GGUF round-trip. Ignored because `FERRUM_MODEL` is unset.
+/// Real TinyLlama GGUF round-trip. Default `cargo test` skips this.
 #[test]
-#[ignore = "FERRUM_MODEL is unset; GGUF round-trip is not run"]
+#[ignore = "needs FERRUM_MODEL; run with --ignored"]
 fn corpus_round_trip_on_gguf() {
-    let Ok(model) = std::env::var("FERRUM_MODEL") else {
-        return;
-    };
+    let model = std::env::var("FERRUM_MODEL").expect("FERRUM_MODEL");
     let file =
         ferrum_gguf::load(Path::new(&model)).unwrap_or_else(|err| panic!("load {model}: {err}"));
     let tokenizer = from_metadata(&file).expect("from_metadata");
     assert_round_trip(&tokenizer, &corpus_lines());
 }
 
-/// Token ids equal llama.cpp on the frozen corpus. The oracle is not pinned.
+/// Token ids equal llama.cpp `llama-tokenize --no-bos --no-parse-special --no-escape`.
+///
+/// That is the same operation as `encode(text, false)`: no BOS, control and
+/// unknown pieces stay in the raw text. Default `cargo test` skips this.
 #[test]
-#[ignore = "FERRUM_MODEL is unset; llama.cpp token-id comparison is not run"]
+#[ignore = "needs FERRUM_MODEL and FERRUM_LLAMA_CPP; run with --ignored"]
 fn corpus_token_ids_match_llama_cpp() {
-    if std::env::var_os("FERRUM_MODEL").is_none() || std::env::var_os("FERRUM_LLAMA_CPP").is_none()
-    {
-        return;
+    let model = std::env::var("FERRUM_MODEL").expect("FERRUM_MODEL");
+    let pinned = std::env::var("FERRUM_LLAMA_CPP").expect("FERRUM_LLAMA_CPP");
+    let file =
+        ferrum_gguf::load(Path::new(&model)).unwrap_or_else(|err| panic!("load {model}: {err}"));
+    let tokenizer = from_metadata(&file).expect("from_metadata");
+    let tokenize = llama_bin(&pinned, "llama-tokenize");
+    for line in corpus_lines() {
+        let ours = tokenizer
+            .encode(&line, false)
+            .unwrap_or_else(|err| panic!("encode {line:?}: {err}"));
+        let theirs = llama_token_ids(&tokenize, Path::new(&model), &line);
+        assert_eq!(ours, theirs, "token ids for {line:?}");
     }
-    panic!("llama.cpp token-id comparison has not been run; the oracle commit is not pinned");
+}
+
+fn llama_bin(dir: &str, name: &str) -> PathBuf {
+    let exe = if cfg!(windows) {
+        format!("{name}.exe")
+    } else {
+        name.to_string()
+    };
+    PathBuf::from(dir).join(exe)
+}
+
+fn llama_token_ids(tokenize: &Path, model: &Path, text: &str) -> Vec<u32> {
+    let mut child = Command::new(tokenize)
+        .args([
+            "-m",
+            model.to_str().expect("model path"),
+            "--stdin",
+            "--ids",
+            "--no-bos",
+            "--no-parse-special",
+            "--no-escape",
+            "--log-disable",
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap_or_else(|err| panic!("spawn {}: {err}", tokenize.display()));
+    child
+        .stdin
+        .as_mut()
+        .expect("stdin")
+        .write_all(text.as_bytes())
+        .expect("write prompt");
+    let output = child.wait_with_output().expect("wait llama-tokenize");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        output.status.success(),
+        "llama-tokenize failed for {text:?}: {}\n{stdout}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let list = stdout
+        .lines()
+        .rev()
+        .find(|line| line.trim_start().starts_with('['))
+        .unwrap_or_else(|| panic!("no id list in {stdout:?}"));
+    let value: serde_json::Value = serde_json::from_str(list.trim()).unwrap_or_else(|err| {
+        panic!("parse {list:?}: {err}");
+    });
+    value
+        .as_array()
+        .unwrap_or_else(|| panic!("id list {list:?}"))
+        .iter()
+        .map(|id| u32::try_from(id.as_u64().expect("id")).expect("id fits u32"))
+        .collect()
 }

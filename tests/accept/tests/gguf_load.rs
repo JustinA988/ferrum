@@ -5,6 +5,7 @@
 use std::any::Any;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use ferrum_core_types::{format_gguf_dump, DType, FerrumError, GgufModel, MetadataValue};
@@ -318,17 +319,36 @@ fn invalid_utf8_string_is_err() {
     assert_gguf_err("invalid-utf8", &buf.bytes);
 }
 
-/// Llama.cpp dump comparison for the target GGUF.
+/// Name, GGUF shape, and ggml type of every tensor match the pinned llama.cpp reader.
 ///
-/// Ignored because `FERRUM_MODEL` is unset. The llama.cpp pin is not chosen,
-/// so this does not run and does not record a measurement.
+/// Default `cargo test` skips this. Run it with `--ignored` after `FERRUM_MODEL`
+/// and `FERRUM_LLAMA_CPP` are set. `FERRUM_LLAMA_CPP` is the directory that holds
+/// `llama-cli` from commit a01dff908b9c9311d7af316bba3c918063749bd0. The tensor
+/// list comes from that commit's `gguf` Python package (`gguf-py`).
 #[test]
-#[ignore = "FERRUM_MODEL is unset; llama.cpp dump comparison is not run"]
+#[ignore = "needs FERRUM_MODEL and pinned llama.cpp; run with --ignored"]
 fn llama_cpp_dump_matches_ferrum_dump() {
-    let model = std::env::var("FERRUM_MODEL")
-        .expect("FERRUM_MODEL is unset; llama.cpp dump comparison is not run");
-    let _pinned = std::env::var("FERRUM_LLAMA_CPP")
-        .expect("FERRUM_LLAMA_CPP is unset; llama.cpp commit is not pinned");
+    let model = std::env::var("FERRUM_MODEL").expect("FERRUM_MODEL");
+    let pinned = std::env::var("FERRUM_LLAMA_CPP").expect("FERRUM_LLAMA_CPP");
+    let cli = llama_bin(&pinned, "llama-cli");
+    let version = Command::new(&cli)
+        .arg("--version")
+        .output()
+        .unwrap_or_else(|err| panic!("run {}: {err}", cli.display()));
+    let version_text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&version.stdout),
+        String::from_utf8_lossy(&version.stderr)
+    );
+    assert!(
+        version.status.success(),
+        "llama-cli --version failed: {version_text}"
+    );
+    assert!(
+        version_text.contains("a01dff908"),
+        "llama.cpp pin is not a01dff908b9c9311d7af316bba3c918063749bd0: {version_text}"
+    );
+
     let file = ferrum_gguf::load(Path::new(&model)).expect("load FERRUM_MODEL");
     let dump = file.dump();
     assert_eq!(
@@ -340,5 +360,45 @@ fn llama_cpp_dump_matches_ferrum_dump() {
             file.tensors()
         )
     );
-    panic!("pinned llama.cpp dump was not compared; the oracle commit is not pinned");
+    assert!(
+        dump.lines().skip(1).count() == file.tensors().len(),
+        "dump line count"
+    );
+
+    let script = Path::new(env!("CARGO_MANIFEST_DIR")).join("oracle/gguf_tensors.py");
+    let oracle = Command::new("python")
+        .arg(&script)
+        .arg(&model)
+        .output()
+        .unwrap_or_else(|err| panic!("python {}: {err}", script.display()));
+    assert!(
+        oracle.status.success(),
+        "gguf reader failed: {}",
+        String::from_utf8_lossy(&oracle.stderr)
+    );
+    let rows: serde_json::Value = serde_json::from_slice(&oracle.stdout).expect("oracle json");
+    let rows = rows.as_array().expect("oracle array");
+    assert_eq!(rows.len(), file.tensors().len(), "tensor count");
+    for (ours, theirs) in file.tensors().iter().zip(rows.iter()) {
+        let name = theirs["name"].as_str().expect("name");
+        let shape: Vec<u64> = theirs["shape"]
+            .as_array()
+            .expect("shape")
+            .iter()
+            .map(|dim| dim.as_u64().expect("dim"))
+            .collect();
+        let ggml_type = theirs["ggml_type"].as_u64().expect("ggml_type") as u32;
+        assert_eq!(ours.name, name);
+        assert_eq!(ours.shape, shape, "{name}");
+        assert_eq!(ours.ggml_type, ggml_type, "{name}");
+    }
+}
+
+fn llama_bin(dir: &str, name: &str) -> PathBuf {
+    let exe = if cfg!(windows) {
+        format!("{name}.exe")
+    } else {
+        name.to_string()
+    };
+    PathBuf::from(dir).join(exe)
 }

@@ -1,6 +1,4 @@
 //! M6a acceptance for `ferrum serve --mock`.
-//!
-//! The official OpenAI Python client is not installed and has not been run.
 
 #![forbid(unsafe_code)]
 
@@ -349,9 +347,43 @@ fn mock_health_models_completion_sse_and_errors() {
     assert!(err["error"]["code"].is_null());
 }
 
-/// The official OpenAI Python client is not installed.
+/// Official `openai` Python client, non-stream and stream, against the mock.
+///
+/// Default `cargo test` skips this. Run it with `--ignored` where `python -c
+/// "import openai"` works. The client is openai 3.x `completions.create`.
 #[test]
-#[ignore = "official OpenAI client is not installed and has not been run"]
+#[ignore = "needs the official openai Python client; run with --ignored"]
 fn official_openai_client_completion_and_stream() {
-    panic!("official OpenAI client has not been run");
+    let server = start_mock();
+    let script = r#"
+import os, sys
+from openai import OpenAI
+base = os.environ["FERRUM_BASE"]
+client = OpenAI(base_url=f"http://{base}/v1", api_key="ferrum")
+done = client.completions.create(model="ferrum-mock", prompt="hi", max_tokens=16)
+text = done.choices[0].text
+if text != "mock":
+    sys.exit("non-stream text " + repr(text))
+parts = []
+for chunk in client.completions.create(
+    model="ferrum-mock", prompt="hi", max_tokens=16, stream=True
+):
+    piece = chunk.choices[0].text or ""
+    parts.append(piece)
+joined = "".join(parts)
+if joined != "mock":
+    sys.exit("stream text " + repr(joined))
+print("ok")
+"#;
+    let output = Command::new("python")
+        .env("FERRUM_BASE", &server.base)
+        .args(["-c", script])
+        .output()
+        .expect("spawn python");
+    assert!(
+        output.status.success(),
+        "openai client failed\nstdout {}\nstderr {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
 }
