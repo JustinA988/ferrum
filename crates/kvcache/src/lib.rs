@@ -4,3 +4,7 @@
 //! Allocation happens in the constructor. `append_layer` and `commit_token` do not allocate.
 
 #![forbid(unsafe_code)]
+
+mod pool;
+
+pub use pool::PreallocatedKvPool;
