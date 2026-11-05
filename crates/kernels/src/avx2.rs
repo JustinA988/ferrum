@@ -4,6 +4,10 @@
 //! IEEE results. FMA is used in the exponential for SiLU and softmax.
 //! MXCSR is left alone: flush-to-zero would break bitwise `add` and `mul`.
 //!
+//! When every lane in a chunk is finite, the SIMD result is stored or accumulated
+//! directly. Any non-finite lane in the chunk falls back to the scalar formula for
+//! that chunk only.
+//!
 //! # Safety
 //!
 //! Every `target_feature` function in this module requires AVX2 and FMA on the
@@ -159,45 +163,24 @@ enum ZipOp {
     Mul,
 }
 
-/// Finite `mulps` / `addps` match scalar `*` / `+` under the default MXCSR.
-/// Non-finite inputs take the scalar op so NaN payloads stay identical.
-fn pairwise_term(op: ZipOp, simd: f32, a: f32, b: f32) -> f32 {
-    if a.is_finite() && b.is_finite() {
-        let exact = match op {
-            ZipOp::Add => a + b,
-            ZipOp::Mul => a * b,
-        };
-        debug_assert_eq!(
-            simd.to_bits(),
-            exact.to_bits(),
-            "avx2 arithmetic diverged from scalar"
-        );
-        simd
-    } else {
-        match op {
-            ZipOp::Add => a + b,
-            ZipOp::Mul => a * b,
-        }
-    }
-}
-
-fn product_term(simd: f32, a: f32, b: f32) -> f32 {
-    pairwise_term(ZipOp::Mul, simd, a, b)
-}
-
 /// # Safety
 ///
 /// AVX2 and FMA are enabled. `tmp` has room for 8 `f32`s.
 #[inline]
 #[target_feature(enable = "avx2,fma")]
-unsafe fn lanes(v: __m256) -> [f32; LANES] {
-    let mut tmp = [0.0f32; LANES];
+unsafe fn store256(tmp: &mut [f32; LANES], v: __m256) {
     // SAFETY: AVX2 was detected before this backend is used. `tmp` is in-bounds
     // for 8 f32s (32 bytes). The store is unaligned.
     unsafe {
         _mm256_storeu_ps(tmp.as_mut_ptr(), v);
     }
-    tmp
+}
+
+#[inline]
+#[target_feature(enable = "avx2,fma")]
+unsafe fn all_finite256(v: __m256) -> bool {
+    // SAFETY: AVX2 was detected before this backend is used.
+    _mm256_movemask_ps(_mm256_cmp_ps(v, v, _CMP_ORD_Q)) == 0xff
 }
 
 /// Add `a[i] * b[i]` left to right, the same order as the scalar dot.
@@ -213,15 +196,22 @@ unsafe fn accumulate_products(acc: &mut f32, a: &[f32], b: &[f32]) {
     while i + LANES <= n {
         // SAFETY: AVX2 and FMA were detected before this backend is used.
         // `a` and `b` are in-bounds for 8 f32s (32 bytes) at `i`. Both loads
-        // are unaligned. `lanes` stores each vector into an 8-wide stack slot.
-        let (pa, pb, prod) = unsafe {
+        // are unaligned.
+        unsafe {
             let va = _mm256_loadu_ps(a.as_ptr().add(i));
             let vb = _mm256_loadu_ps(b.as_ptr().add(i));
-            let vp = _mm256_mul_ps(va, vb);
-            (lanes(va), lanes(vb), lanes(vp))
-        };
-        for k in 0..LANES {
-            *acc += product_term(prod[k], pa[k], pb[k]);
+            if all_finite256(va) && all_finite256(vb) {
+                let vp = _mm256_mul_ps(va, vb);
+                let mut prod = [0.0f32; LANES];
+                store256(&mut prod, vp);
+                for value in prod {
+                    *acc += value;
+                }
+            } else {
+                for k in 0..LANES {
+                    *acc += a[i + k] * b[i + k];
+                }
+            }
         }
         i += LANES;
     }
@@ -253,17 +243,23 @@ unsafe fn zip_avx2(a: &[f32], b: &[f32], out: &mut [f32], op: ZipOp) {
         // SAFETY: AVX2 and FMA were detected before this backend is used.
         // `a`, `b`, and `out` are in-bounds for 8 f32s (32 bytes) at `i`.
         // Loads and the lane store are unaligned.
-        let (pa, pb, pr) = unsafe {
+        unsafe {
             let va = _mm256_loadu_ps(a.as_ptr().add(i));
             let vb = _mm256_loadu_ps(b.as_ptr().add(i));
-            let vr = match op {
-                ZipOp::Add => _mm256_add_ps(va, vb),
-                ZipOp::Mul => _mm256_mul_ps(va, vb),
-            };
-            (lanes(va), lanes(vb), lanes(vr))
-        };
-        for k in 0..LANES {
-            out[i + k] = pairwise_term(op, pr[k], pa[k], pb[k]);
+            if all_finite256(va) && all_finite256(vb) {
+                let vr = match op {
+                    ZipOp::Add => _mm256_add_ps(va, vb),
+                    ZipOp::Mul => _mm256_mul_ps(va, vb),
+                };
+                _mm256_storeu_ps(out.as_mut_ptr().add(i), vr);
+            } else {
+                for k in 0..LANES {
+                    out[i + k] = match op {
+                        ZipOp::Add => a[i + k] + b[i + k],
+                        ZipOp::Mul => a[i + k] * b[i + k],
+                    };
+                }
+            }
         }
         i += LANES;
     }
@@ -292,15 +288,18 @@ unsafe fn scale_avx2(x: &mut [f32], factor: f32) {
     let factor_v = _mm256_set1_ps(factor);
     while i + LANES <= n {
         // SAFETY: AVX2 and FMA were detected before this backend is used.
-        // `x` is in-bounds for 8 f32s (32 bytes) at `i`. The load and the
-        // lane store are unaligned.
-        let (px, pr) = unsafe {
+        // `x` is in-bounds for 8 f32s (32 bytes) at `i`. The load and store
+        // are unaligned.
+        unsafe {
             let vx = _mm256_loadu_ps(x.as_ptr().add(i));
-            let vr = _mm256_mul_ps(vx, factor_v);
-            (lanes(vx), lanes(vr))
-        };
-        for k in 0..LANES {
-            x[i + k] = product_term(pr[k], px[k], factor);
+            if all_finite256(vx) {
+                let vr = _mm256_mul_ps(vx, factor_v);
+                _mm256_storeu_ps(x.as_mut_ptr().add(i), vr);
+            } else {
+                for k in 0..LANES {
+                    x[i + k] *= factor;
+                }
+            }
         }
         i += LANES;
     }
@@ -335,20 +334,17 @@ unsafe fn rms_avx2(x: &[f32], weight: &[f32], eps: f32, out: &mut [f32]) {
         // SAFETY: AVX2 and FMA were detected before this backend is used.
         // `x`, `weight`, and `out` are in-bounds for 8 f32s (32 bytes) at `i`.
         // Loads and the lane store are unaligned.
-        let (px, pw, pr) = unsafe {
+        unsafe {
             let vx = _mm256_loadu_ps(x.as_ptr().add(i));
             let vw = _mm256_loadu_ps(weight.as_ptr().add(i));
-            let scaled = _mm256_mul_ps(vx, inv_v);
-            let vr = _mm256_mul_ps(scaled, vw);
-            (lanes(vx), lanes(vw), lanes(vr))
-        };
-        for k in 0..LANES {
-            let exact = (px[k] * inv) * pw[k];
-            if px[k].is_finite() && pw[k].is_finite() {
-                debug_assert_eq!(pr[k].to_bits(), exact.to_bits());
-                out[i + k] = pr[k];
+            if all_finite256(vx) && all_finite256(vw) {
+                let scaled = _mm256_mul_ps(vx, inv_v);
+                let vr = _mm256_mul_ps(scaled, vw);
+                _mm256_storeu_ps(out.as_mut_ptr().add(i), vr);
             } else {
-                out[i + k] = exact;
+                for k in 0..LANES {
+                    out[i + k] = (x[i + k] * inv) * weight[i + k];
+                }
             }
         }
         i += LANES;
@@ -427,7 +423,9 @@ unsafe fn silu_avx2(x: &[f32], out: &mut [f32]) {
             let vx = _mm256_loadu_ps(x.as_ptr().add(i));
             let neg = _mm256_sub_ps(_mm256_setzero_ps(), vx);
             let denom = _mm256_add_ps(_mm256_set1_ps(1.0), exp256(neg));
-            lanes(_mm256_div_ps(vx, denom))
+            let mut tmp = [0.0f32; LANES];
+            store256(&mut tmp, _mm256_div_ps(vx, denom));
+            tmp
         };
         for k in 0..LANES {
             let v = x[i + k];
@@ -463,14 +461,15 @@ unsafe fn softmax_avx2(x: &mut [f32]) {
         // SAFETY: AVX2 and FMA were detected before this backend is used.
         // `x` is in-bounds for 8 f32s (32 bytes) at `i`. The load and the
         // store of 8 f32s are unaligned.
-        let exps = unsafe {
+        unsafe {
             let v = _mm256_loadu_ps(x.as_ptr().add(i));
             let e = exp256(_mm256_sub_ps(v, max_v));
             _mm256_storeu_ps(x.as_mut_ptr().add(i), e);
-            lanes(e)
-        };
-        for value in exps {
-            sum += value;
+            let mut exps = [0.0f32; LANES];
+            store256(&mut exps, e);
+            for value in exps {
+                sum += value;
+            }
         }
         i += LANES;
     }
@@ -513,27 +512,19 @@ unsafe fn rope_avx2(data: &mut [f32], head_dim: usize, rope_dim: usize, pos: u32
                 let b = _mm256_loadu_ps(base.add(i + half));
                 let sin_v = _mm256_loadu_ps(sin_a.as_ptr());
                 let cos_v = _mm256_loadu_ps(cos_a.as_ptr());
-                let new_a = _mm256_sub_ps(_mm256_mul_ps(a, cos_v), _mm256_mul_ps(b, sin_v));
-                let new_b = _mm256_add_ps(_mm256_mul_ps(b, cos_v), _mm256_mul_ps(a, sin_v));
-                let pa = lanes(a);
-                let pb = lanes(b);
-                let ps = lanes(sin_v);
-                let pc = lanes(cos_v);
-                let na = lanes(new_a);
-                let nb = lanes(new_b);
-                for k in 0..LANES {
-                    let scalar_a = pa[k] * pc[k] - pb[k] * ps[k];
-                    let scalar_b = pb[k] * pc[k] + pa[k] * ps[k];
-                    let finite = pa[k].is_finite()
-                        && pb[k].is_finite()
-                        && ps[k].is_finite()
-                        && pc[k].is_finite();
-                    if finite {
-                        debug_assert_eq!(na[k].to_bits(), scalar_a.to_bits());
-                        debug_assert_eq!(nb[k].to_bits(), scalar_b.to_bits());
-                        head[i + k] = na[k];
-                        head[i + half + k] = nb[k];
-                    } else {
+                if all_finite256(a)
+                    && all_finite256(b)
+                    && all_finite256(sin_v)
+                    && all_finite256(cos_v)
+                {
+                    let new_a = _mm256_sub_ps(_mm256_mul_ps(a, cos_v), _mm256_mul_ps(b, sin_v));
+                    let new_b = _mm256_add_ps(_mm256_mul_ps(b, cos_v), _mm256_mul_ps(a, sin_v));
+                    _mm256_storeu_ps(base.add(i), new_a);
+                    _mm256_storeu_ps(base.add(i + half), new_b);
+                } else {
+                    for k in 0..LANES {
+                        let scalar_a = head[i + k] * cos_a[k] - head[i + half + k] * sin_a[k];
+                        let scalar_b = head[i + half + k] * cos_a[k] + head[i + k] * sin_a[k];
                         head[i + k] = scalar_a;
                         head[i + half + k] = scalar_b;
                     }
@@ -578,15 +569,22 @@ unsafe fn dot_f32_row(row: &[u8], x: &[f32]) -> f32 {
         // SAFETY: AVX2 and FMA were detected before this backend is used.
         // The weight pointer is in-bounds for 8 f32s (32 bytes) at element `k`,
         // and `x` is in-bounds for the same width. Both loads are unaligned.
-        let (pw, px, prod) = unsafe {
+        unsafe {
             let wp = row.as_ptr().add(k * 4).cast::<f32>();
             let vw = _mm256_loadu_ps(wp);
             let vx = _mm256_loadu_ps(x.as_ptr().add(k));
-            let vp = _mm256_mul_ps(vw, vx);
-            (lanes(vw), lanes(vx), lanes(vp))
-        };
-        for lane in 0..LANES {
-            acc += product_term(prod[lane], pw[lane], px[lane]);
+            if all_finite256(vw) && all_finite256(vx) {
+                let vp = _mm256_mul_ps(vw, vx);
+                let mut prod = [0.0f32; LANES];
+                store256(&mut prod, vp);
+                for lane in prod {
+                    acc += lane;
+                }
+            } else {
+                for lane in 0..LANES {
+                    acc += pack::f32_at(row, k + lane).unwrap_or(0.0) * x[k + lane];
+                }
+            }
         }
         k += LANES;
     }
@@ -658,24 +656,31 @@ unsafe fn dot_q8_row(row: &[u8], x: &[f32]) -> f32 {
                 acc += (scale * pack::q8_quant(qs[j])) * x_block[j];
             }
         } else {
+            let scale_v = _mm256_set1_ps(scale);
             let mut j = 0usize;
             while j + LANES <= Q8_0_BLOCK {
                 // SAFETY: AVX2 and FMA were detected before this backend is used.
                 // `qs` has 32 bytes; the 8-byte load at `j` (0, 8, 16, 24) is
                 // in-bounds and unaligned. `x_block` is in-bounds for 8 f32s
                 // (32 bytes) at `j`. The lane store is unaligned.
-                let (pq, px, prod) = unsafe {
+                unsafe {
                     let qv = _mm_loadl_epi64(qs.as_ptr().add(j).cast::<__m128i>());
                     let qf = _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(qv));
                     let vx = _mm256_loadu_ps(x_block.as_ptr().add(j));
-                    let scaled = _mm256_mul_ps(qf, _mm256_set1_ps(scale));
-                    let vp = _mm256_mul_ps(scaled, vx);
-                    (lanes(qf), lanes(vx), lanes(vp))
-                };
-                for lane in 0..LANES {
-                    let q = pack::q8_quant(qs[j + lane]);
-                    debug_assert_eq!(pq[lane].to_bits(), q.to_bits());
-                    acc += product_term(prod[lane], scale * q, px[lane]);
+                    if all_finite256(vx) {
+                        let scaled = _mm256_mul_ps(qf, scale_v);
+                        let vp = _mm256_mul_ps(scaled, vx);
+                        let mut prod = [0.0f32; LANES];
+                        store256(&mut prod, vp);
+                        for lane in prod {
+                            acc += lane;
+                        }
+                    } else {
+                        for lane in 0..LANES {
+                            let q = pack::q8_quant(qs[j + lane]);
+                            acc += (scale * q) * x_block[j + lane];
+                        }
+                    }
                 }
                 j += LANES;
             }
@@ -754,6 +759,7 @@ unsafe fn dequant_q8(w: &[u8], out: &mut [f32]) {
                 out[i + j] = scale * pack::q8_quant(qs[j]);
             }
         } else {
+            let scale_v = _mm256_set1_ps(scale);
             let mut j = 0usize;
             while j + LANES <= Q8_0_BLOCK {
                 // SAFETY: AVX2 and FMA were detected before this backend is used.
@@ -763,14 +769,8 @@ unsafe fn dequant_q8(w: &[u8], out: &mut [f32]) {
                 unsafe {
                     let qv = _mm_loadl_epi64(qs.as_ptr().add(j).cast::<__m128i>());
                     let qf = _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(qv));
-                    let scaled = _mm256_mul_ps(qf, _mm256_set1_ps(scale));
-                    let pq = lanes(qf);
-                    let ps = lanes(scaled);
-                    for lane in 0..LANES {
-                        let q = pack::q8_quant(qs[j + lane]);
-                        debug_assert_eq!(pq[lane].to_bits(), q.to_bits());
-                        out[i + j + lane] = product_term(ps[lane], scale, q);
-                    }
+                    let scaled = _mm256_mul_ps(qf, scale_v);
+                    _mm256_storeu_ps(out.as_mut_ptr().add(i + j), scaled);
                 }
                 j += LANES;
             }
