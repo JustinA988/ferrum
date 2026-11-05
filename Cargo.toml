@@ -1,0 +1,19 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/core-types",
+    "crates/gguf",
+    "crates/kernels",
+    "crates/tokenizer",
+    "crates/model",
+    "crates/kvcache",
+    "crates/scheduler",
+    "crates/server",
+    "crates/ferrum-cli",
+    "tests/accept",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+publish = false

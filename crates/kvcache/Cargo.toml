@@ -1,0 +1,12 @@
+[package]
+name = "ferrum-kvcache"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+description = "Pre-allocated KV slot pool"
+
+[dependencies]
+ferrum-core-types = { path = "../core-types" }
+
+[lints.rust]
+unsafe_code = "forbid"

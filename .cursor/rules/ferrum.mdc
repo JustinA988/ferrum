@@ -1,0 +1,14 @@
+---
+description: Ferrum inference server contract
+alwaysApply: true
+---
+
+Follow AGENTS.md and docs/ARCHITECTURE.md.
+
+`ferrum-core-types` interface revision 1 is frozen. Do not change public types, trait methods, error-to-HTTP mapping, or the OpenAI wire format unless the user asks.
+
+`unsafe` is allowed only in `crates/kernels` and the mmap layer of `crates/gguf`. Every block needs a `// SAFETY:` comment that states the invariant.
+
+Inference runs on dedicated OS threads. Do not run it on the actix or tokio runtime.
+
+docs/STATUS.md records measured results only. A milestone that has not been run stays "not run".

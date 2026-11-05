@@ -1,0 +1,8 @@
+/target
+**/*.rs.bk
+.DS_Store
+*.gguf
+/fuzz/artifacts
+/fuzz/corpus
+/fuzz/target
+.cursor/hooks/state/

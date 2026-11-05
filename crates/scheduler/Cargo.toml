@@ -1,0 +1,12 @@
+[package]
+name = "ferrum-scheduler"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+description = "Continuous batching scheduler"
+
+[dependencies]
+ferrum-core-types = { path = "../core-types" }
+
+[lints.rust]
+unsafe_code = "forbid"
