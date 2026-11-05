@@ -590,6 +590,9 @@ name = "ferrum-model"
 version = "0.1.0"
 dependencies = [
  "ferrum-core-types",
+ "ferrum-gguf",
+ "ferrum-kernels",
+ "ferrum-kvcache",
 ]
 
 [[package]]

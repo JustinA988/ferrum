@@ -7,6 +7,11 @@ description = "Llama forward pass"
 
 [dependencies]
 ferrum-core-types = { path = "../core-types" }
+ferrum-kvcache = { path = "../kvcache" }
+ferrum-kernels = { path = "../kernels" }
+
+[dev-dependencies]
+ferrum-gguf = { path = "../gguf" }
 
 [lints.rust]
 unsafe_code = "forbid"
