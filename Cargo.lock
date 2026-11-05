@@ -540,7 +540,9 @@ dependencies = [
  "ferrum-core-types",
  "ferrum-gguf",
  "ferrum-kernels",
+ "ferrum-tokenizer",
  "proptest",
+ "serde_json",
 ]
 
 [[package]]

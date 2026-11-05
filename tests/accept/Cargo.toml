@@ -9,6 +9,8 @@ description = "Acceptance tests owned by V1"
 ferrum-core-types = { path = "../../crates/core-types" }
 ferrum-gguf = { path = "../../crates/gguf" }
 ferrum-kernels = { path = "../../crates/kernels" }
+ferrum-tokenizer = { path = "../../crates/tokenizer" }
+serde_json = "1.0.154"
 
 [dev-dependencies]
 proptest = "1.6"
