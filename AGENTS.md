@@ -12,3 +12,4 @@ Revision 1 loads a GGUF file, runs a scalar or AVX2 forward pass, and serves a m
 - Primary model: TinyLlama-1.1B-Chat (SentencePiece, 4 KV heads). Compute formats: F32, F16, Q8_0.
 - Revision 1 does not select AVX-512.
 - Numbers in `docs/STATUS.md` are release measurements only.
+- Released under the MIT license. See `LICENSE`.

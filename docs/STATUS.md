@@ -1,6 +1,6 @@
 # Status
 
-Measured on a 12th Gen Intel Core i7-12650H with AVX2+FMA, rustc/cargo 1.99.1.
+Measured on Windows x86_64 with AVX2+FMA, rustc/cargo 1.99.1.
 
 Oracle: llama.cpp tag `b12128`, commit `a01dff908b9c9311d7af316bba3c918063749bd0`.
 
