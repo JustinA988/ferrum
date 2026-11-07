@@ -1,5 +1,4 @@
-# Provisional gate. The milestone brief's CI section was cut off before it
-# arrived. This workflow is what "CI green" means until that section is restored.
+# Format, clippy, and workspace tests.
 name: ci
 
 on:

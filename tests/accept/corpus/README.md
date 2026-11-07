@@ -1,1 +1,1 @@
-This corpus is now frozen.
+Tokenizer acceptance corpus. The strings are fixed.

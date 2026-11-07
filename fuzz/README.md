@@ -1,6 +1,6 @@
 `fuzz/fuzz_targets/gguf_parse.rs` calls `ferrum_gguf::load` on arbitrary bytes and asserts that the call returns a `Result`. A panic is a failure.
 
-### Run (10-minute M1 gate)
+### Run
 
 Needs nightly and `cargo-fuzz`. On Windows MSVC, put the VS BuildTools ASAN DLL on `PATH` (or next to the binary):
 

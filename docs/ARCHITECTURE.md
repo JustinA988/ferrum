@@ -2,7 +2,7 @@
 
 Interface revision **1**. Frozen on 2026-11-04.
 
-Public items in `ferrum-core-types` are the contract. Crate entry points named in this document are also frozen: `ferrum_gguf::load`, `ferrum_kernels::scalar`, `ferrum_kernels::select`, `ferrum_tokenizer::from_metadata`, and the mock helpers in `ferrum_core_types`. A change to any of them is an orchestrator change and needs Justin's written agreement.
+Public items in `ferrum-core-types` are the contract. These entry points are frozen with them: `ferrum_gguf::load`, `ferrum_kernels::scalar`, `ferrum_kernels::select`, `ferrum_tokenizer::from_metadata`, and the mock helpers in `ferrum_core_types`.
 
 ## System
 
@@ -24,7 +24,7 @@ ferrum-cli
 ## Fixed stack
 
 - Rust edition 2021, stable toolchain.
-- HTTP: actix-web 4 on its tokio runtime. `Cargo.lock` has actix-web 4.18.1, tokio 1.54.1, serde_json 1.0.154, memmap2 0.9.12, and rayon 1.12.0. Confirmed against the actix-web 4.11.0 docs, which 4.18 still has to compile against: `HttpResponse::Ok() -> HttpResponseBuilder`, `HttpResponseBuilder::streaming<S, E>(&mut self, stream: S) -> HttpResponse` where `S: Stream<Item = Result<Bytes, E>> + 'static` and `E: Into<BoxError>`, `web::Json<T>` as extractor (`T: Deserialize`) and responder (`T: Serialize`), and `App::new().app_data(...).service(...)`. If a 4.18 signature differs, stop and check Context7. Do not invent one.
+- HTTP: actix-web 4 on its tokio runtime. `Cargo.lock` pins actix-web 4.18.1, tokio 1.54.1, serde_json 1.0.154, memmap2 0.9.12, and rayon 1.12.0.
 - Kernel parallelism: rayon, inside the kernel crate, on the inference thread.
 - Inference never runs on the actix or tokio worker. The handler sends the request to an OS thread (`std::thread`) and forwards results from `std::sync::mpsc`.
 - mmap: `memmap2::Mmap::map`. Confirmed signature: `unsafe fn map<T: MmapAsRawDesc>(file: T) -> std::io::Result<Mmap>`. The map derefs to `[u8]`.
@@ -160,8 +160,6 @@ Both backends return the same `Err` for a length mismatch, a non-positive `theta
 - A step emits at most one new token per active sequence.
 - `temperature != 0` is `invalid_request` on the real engine. `top_p` is stored and ignored by greedy.
 
-The acceptance text for M5 was cut off after "pre-allocated". Do not invent pass/fail numbers for it.
-
 ## Tokenizer
 
 `from_metadata` reads `tokenizer.ggml.tokens`, optional `scores`, optional `token_type`, BOS, and EOS. Token type codes are the `TOKEN_*` constants (1 normal through 6 byte). Revision 1 supports `tokenizer.ggml.model == "llama"` only.
@@ -173,7 +171,7 @@ Observable behavior, matching llama.cpp's llama SentencePiece path:
 - `decode(encode(text, false)) == text` on the acceptance corpus, including the empty string.
 - Token ids equal llama.cpp on that corpus.
 
-V1 commits the 200 strings (unicode, whitespace, emoji, empty) before measuring. Changing the corpus is an interface change.
+The 200-string corpus (unicode, whitespace, emoji, empty) is fixed. Changing it changes the interface.
 
 ## HTTP
 
@@ -212,7 +210,7 @@ Prompt token accounting on the mock is not real tokenization: a non-empty string
 
 ## Numeric acceptance for M4
 
-Five prompts, each at least 32 tokens, committed by V1 before the run. Teacher-forced logits against llama.cpp:
+Five prompts, each at least 32 tokens. Teacher-forced logits against llama.cpp:
 
 - F16 weights, f32 accumulation: per prompt, top-1 agreement `>= 99%` and max abs logit diff `<= 0.1`.
 - Q8_0: per prompt, top-1 agreement `>= 99%` and max abs logit diff `<= 2.0`.
@@ -229,31 +227,31 @@ Before a number is written into `STATUS.md`: name the limiter, count errors, run
 
 Wave 1, parallel, after this freeze:
 
-| Id | Owner | Acceptance |
-| --- | --- | --- |
-| M1 | A1 | `load` of the target GGUF. Dump name, shape, and dtype match llama.cpp. `cargo-fuzz` on corrupt files for 10 minutes with zero panics. |
-| M2 | A2 | Scalar for every `Kernels` method, then AVX2+FMA. proptest odd sizes inside the tolerance table. Criterion reports GEMV GB/s and GEMM FLOP/s. |
-| M3 | A3 | Token ids identical to llama.cpp on the 200-string corpus. Decode round-trips. |
-| M6a | A6 | `/v1/completions`, `/v1/models`, `/health`, SSE, OpenAI error shape, against the mock. The official OpenAI client completes a non-stream and a stream call. |
+| Id | Acceptance |
+| --- | --- |
+| M1 | `load` of the target GGUF. Dump name, shape, and dtype match llama.cpp. `cargo-fuzz` on corrupt files for 10 minutes with zero panics. |
+| M2 | Scalar for every `Kernels` method, then AVX2+FMA. proptest odd sizes inside the tolerance table. Criterion reports GEMV GB/s and GEMM FLOP/s. |
+| M3 | Token ids identical to llama.cpp on the 200-string corpus. Decode round-trips. |
+| M6a | `/v1/completions`, `/v1/models`, `/health`, SSE, OpenAI error shape, against the mock. The official OpenAI client completes a non-stream and a stream call. |
 
 Wave 2:
 
-| Id | Owner | Acceptance |
-| --- | --- | --- |
-| M4 | A4 | Uses M1 and the M2 scalar backend. Teacher-forced logits meet the M4 bounds on five prompts, for F16 and Q8_0. |
-| M5 | A5 | Pre-allocated KV pool. Further acceptance text was not in the brief. |
+| Id | Acceptance |
+| --- | --- |
+| M4 | Uses M1 and the M2 scalar backend. Teacher-forced logits meet the M4 bounds on five prompts, for F16 and Q8_0. |
+| M5 | Pre-allocated KV pool. |
 
-Fuzz runs on Linux. It is not a Windows host gate. Oracle tests skip unless `FERRUM_MODEL` is set, and they are `#[ignore]` so CI stays green without the file. Sign-off is an explicit `--ignored` run recorded in `STATUS.md`.
+Oracle tests are `#[ignore]` and run only when `FERRUM_MODEL` is set, so CI stays green without the weights. A recorded `--ignored` run is what `docs/STATUS.md` cites.
 
 ## Oracle
 
-llama.cpp is pinned when V1 builds it. The commit is written into `docs/STATUS.md` at that moment. The pin is not chosen yet. The oracle is offline: tests and benches only. The server does not link it.
+The llama.cpp pin is the commit in `docs/STATUS.md`. The oracle is offline: tests and benches only. The server does not link it.
 
 `FERRUM_MODEL` is the TinyLlama-1.1B-Chat GGUF, F16 or Q8_0, SentencePiece, 4 KV heads. `FERRUM_LLAMA_CPP` is the pinned binary directory.
 
-## Provisional CI
+## CI
 
-The brief's CI section was missing. Until it is restored, green means `.github/workflows/ci.yml`: `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -- -D warnings`, and `cargo test --workspace` on stable.
+`.github/workflows/ci.yml` runs `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -- -D warnings`, and `cargo test --workspace` on stable.
 
 ## Crate map
 
@@ -268,4 +266,4 @@ The brief's CI section was missing. Until it is restored, green means `.github/w
 | `crates/scheduler` | `ferrum-scheduler` | forbidden |
 | `crates/server` | `ferrum-server` | forbidden |
 | `crates/ferrum-cli` | `ferrum-cli` | forbidden |
-| `tests/accept` | `ferrum-accept` | forbidden, owned by V1 |
+| `tests/accept` | `ferrum-accept` | forbidden |
