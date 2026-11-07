@@ -131,6 +131,7 @@ impl<M: CausalModel> ContinuousBatcher<M> {
             .map(|r| r.id)
             .collect();
         let mut finished: Vec<RequestId> = Vec::new();
+        let mut completed: Vec<RequestId> = Vec::new();
 
         for id in decode_ids {
             if *budget == 0 {
@@ -149,11 +150,24 @@ impl<M: CausalModel> ContinuousBatcher<M> {
             if self.logits.len() < vocab {
                 self.logits.resize(vocab, 0.0);
             }
-            self.model
-                .forward(&[token], pos, run.slot, &mut self.logits[..vocab])?;
+            if let Err(err) = self
+                .model
+                .forward(&[token], pos, run.slot, &mut self.logits[..vocab])
+            {
+                self.rollback_completed(&completed, events)?;
+                return Err(err);
+            }
             *budget -= 1;
-            let next = sample_token(&self.logits[..vocab])?;
+            let next = match sample_token(&self.logits[..vocab]) {
+                Ok(next) => next,
+                Err(err) => {
+                    self.restore_kv(idx)?;
+                    self.rollback_completed(&completed, events)?;
+                    return Err(err);
+                }
+            };
             self.emit_generated(idx, next, events, &mut finished)?;
+            completed.push(id);
         }
 
         self.finish_by_id(&finished)?;
@@ -262,6 +276,45 @@ impl<M: CausalModel> ContinuousBatcher<M> {
         Ok(())
     }
 
+    /// Rebuild KV for `idx` from `Active.tokens` after a forward that must not stick.
+    fn restore_kv(&mut self, idx: usize) -> Result<(), FerrumError> {
+        let tokens = self.active[idx].tokens.clone();
+        let slot = self.active[idx].slot;
+        self.model.free_slot(slot)?;
+        let new_slot = self.model.alloc_slot()?;
+        self.active[idx].slot = new_slot;
+        // The last id is the sampled token that has not been forwarded yet.
+        // Replaying the prefix restores KV to the length from before the forward we are undoing.
+        let Some(prefix) = tokens.split_last().map(|(_, prefix)| prefix) else {
+            return Ok(());
+        };
+        if prefix.is_empty() {
+            return Ok(());
+        }
+        let vocab = self.model.config().n_vocab as usize;
+        let mut logits = vec![0.0; prefix.len() * vocab];
+        self.model.forward(prefix, 0, new_slot, &mut logits)
+    }
+
+    /// Drop tokens emitted earlier in this step and rebuild their KV.
+    fn rollback_completed(
+        &mut self,
+        ids: &[RequestId],
+        events: &mut Vec<StepEvent>,
+    ) -> Result<(), FerrumError> {
+        for &id in ids.iter().rev() {
+            events.retain(|event| step_event_id(event) != id);
+            let Some(idx) = self.active.iter().position(|run| run.id == id) else {
+                continue;
+            };
+            let run = &mut self.active[idx];
+            run.generated = run.generated.saturating_sub(1);
+            run.tokens.pop();
+            self.restore_kv(idx)?;
+        }
+        Ok(())
+    }
+
     fn finish_by_id(&mut self, finished: &[RequestId]) -> Result<(), FerrumError> {
         for &id in finished {
             let Some(pos) = self.active.iter().position(|r| r.id == id) else {
@@ -271,6 +324,12 @@ impl<M: CausalModel> ContinuousBatcher<M> {
             self.model.free_slot(run.slot)?;
         }
         Ok(())
+    }
+}
+
+fn step_event_id(event: &StepEvent) -> RequestId {
+    match event {
+        StepEvent::Token { id, .. } | StepEvent::Finished { id, .. } => *id,
     }
 }
 
@@ -296,6 +355,9 @@ mod tests {
         /// else `next_token`. Used to prove prefill sampling vs re-forward.
         record: bool,
         forwards: Vec<(u32, Vec<u32>)>,
+        calls: usize,
+        /// When `calls` reaches this value, `forward` returns an error before mutating KV.
+        fail_on_call: Option<usize>,
     }
 
     impl StubModel {
@@ -324,6 +386,8 @@ mod tests {
                 last_forward_len: 0,
                 record: false,
                 forwards: Vec::new(),
+                calls: 0,
+                fail_on_call: None,
             }
         }
 
@@ -380,6 +444,10 @@ mod tests {
             }
             if position0 as usize != self.seq[i] {
                 return Err(FerrumError::model("bad position0"));
+            }
+            self.calls += 1;
+            if self.fail_on_call == Some(self.calls) {
+                return Err(FerrumError::model("injected forward failure"));
             }
             self.last_forward_len = token_ids.len();
             if self.record {
@@ -676,5 +744,53 @@ mod tests {
         let _ = b.step().unwrap();
         assert_eq!(b.active(), 1);
         assert_eq!(b.queued(), 1);
+    }
+
+    #[test]
+    fn decode_error_restores_earlier_sequences() {
+        let mut model = StubModel::new(2);
+        model.next_token = 5;
+        let mut b = ContinuousBatcher::new(model, 8);
+        for (id, prompt) in [(1u64, 1u32), (2, 3)] {
+            b.submit(SubmitRequest {
+                id: RequestId(id),
+                prompt_tokens: vec![prompt],
+                max_new_tokens: 8,
+                sampling: SamplingParams::greedy(),
+                stop_tokens: vec![],
+            })
+            .unwrap();
+        }
+        b.step().unwrap();
+        b.step().unwrap();
+        let before: Vec<_> = b
+            .active
+            .iter()
+            .map(|run| {
+                (
+                    run.id,
+                    run.tokens.clone(),
+                    run.generated,
+                    b.model.seq_len(run.slot).unwrap(),
+                )
+            })
+            .collect();
+        // Next step decodes request 1, then request 2. Fail the second forward.
+        b.model.fail_on_call = Some(b.model.calls + 2);
+        let err = b.step().unwrap_err();
+        assert!(matches!(err, FerrumError::Model(_)));
+        assert_eq!(b.active(), 2);
+        for (id, tokens, generated, seq) in before {
+            let run = b.active.iter().find(|run| run.id == id).unwrap();
+            assert_eq!(run.tokens, tokens);
+            assert_eq!(run.generated, generated);
+            assert_eq!(b.model.seq_len(run.slot).unwrap(), seq);
+        }
+        b.model.fail_on_call = None;
+        let ev = b.step().unwrap();
+        assert_eq!(ev.len(), 2);
+        assert!(ev
+            .iter()
+            .all(|event| matches!(event, StepEvent::Token { .. })));
     }
 }

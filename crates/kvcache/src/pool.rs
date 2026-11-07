@@ -197,6 +197,32 @@ impl KvPool for PreallocatedKvPool {
     }
 }
 
+impl PreallocatedKvPool {
+    /// Drop a partial append so the next token can start at layer 0.
+    pub fn abandon_partial(&mut self, slot: SlotId) -> Result<(), FerrumError> {
+        let index = Self::slot_index(slot)?;
+        if index >= self.free.len() || self.free[index] {
+            return Err(FerrumError::cache("abandon on free slot"));
+        }
+        self.layers_appended[index] = 0;
+        Ok(())
+    }
+
+    /// Undo one committed token. Stored K/V at that position is overwritten on the next append.
+    pub fn uncommit_token(&mut self, slot: SlotId) -> Result<(), FerrumError> {
+        let index = Self::slot_index(slot)?;
+        if index >= self.free.len() || self.free[index] {
+            return Err(FerrumError::cache("uncommit on free slot"));
+        }
+        if self.seq_len[index] == 0 {
+            return Err(FerrumError::cache("nothing to uncommit"));
+        }
+        self.seq_len[index] -= 1;
+        self.layers_appended[index] = 0;
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -239,6 +265,22 @@ mod tests {
         pool.append_layer(slot, 1, &k, &v).unwrap();
         pool.commit_token(slot).unwrap();
         assert!(pool.k(slot, 0, 1).is_err());
+    }
+
+    #[test]
+    fn uncommit_and_abandon_let_the_next_append_start_over() {
+        let mut pool = PreallocatedKvPool::new(tiny_config()).unwrap();
+        let slot = pool.alloc().unwrap();
+        let k = [1.0, 2.0, 3.0, 4.0];
+        let v = [5.0, 6.0, 7.0, 8.0];
+        pool.append_layer(slot, 0, &k, &v).unwrap();
+        pool.abandon_partial(slot).unwrap();
+        pool.append_layer(slot, 0, &k, &v).unwrap();
+        pool.append_layer(slot, 1, &k, &v).unwrap();
+        pool.commit_token(slot).unwrap();
+        pool.uncommit_token(slot).unwrap();
+        assert_eq!(pool.seq_len(slot).unwrap(), 0);
+        pool.append_layer(slot, 0, &k, &v).unwrap();
     }
 
     #[test]

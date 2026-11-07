@@ -47,4 +47,4 @@ No numeric acceptance in the brief (cut off after "pre-allocated"). `cargo test 
 
 ## Review
 
-R1 thermos on AVX2 fix merged (`0bbd7bb`). R1 re-audit of the uncommitted A4/A5 tree (2026-11-07): no blocking findings. H1 closed (prefill samples the last logits row; decode does not re-forward the prompt tail). Quality re-audit clear. M1 remains open: a later decode error in the same step can leave earlier sequences advanced and drop their events (`ferrum-wt/a4-model/r1/signoff-thermo.md`). M5 still has no numeric acceptance text in the brief — unit tests only; do not invent pass/fail thresholds.
+R1 thermos on AVX2 fix merged (`0bbd7bb`). R1 re-audit of the uncommitted A4/A5 tree (2026-11-07): no blocking findings. H1 closed (prefill samples the last logits row; decode does not re-forward the prompt tail). Quality re-audit clear. M1 closed on this host: a failed decode restores earlier sequences in that step before the error is returned (`decode_error_restores_earlier_sequences`). A multi-token `forward` that fails rewinds KV to the length at entry. M5 still has no numeric acceptance text in the brief — unit tests only; do not invent pass/fail thresholds.

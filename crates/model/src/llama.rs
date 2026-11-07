@@ -155,6 +155,7 @@ impl<M: GgufModel + Send + Sync> Llama<M> {
         if logits_out.len() != n_vocab {
             return Err(FerrumError::model("logits row length mismatch"));
         }
+        self.kv.abandon_partial(slot)?;
         let pos_usize = pos as usize;
         let kv_group = n_head / n_kv;
         let scale = 1.0 / (head_dim as f32).sqrt();
@@ -352,13 +353,30 @@ impl<M: GgufModel + Send + Sync> CausalModel for Llama<M> {
         }
 
         for (idx, &token_id) in token_ids.iter().enumerate() {
-            self.embed(token_id)?;
             let pos = position0
                 .checked_add(idx as u32)
                 .ok_or_else(|| FerrumError::model("position overflow"))?;
             let base = idx * n_vocab;
-            self.forward_one_token(slot, pos, &mut logits_out[base..base + n_vocab])?;
+            if let Err(err) = self.embed(token_id) {
+                self.rewind_forward(slot, seq)?;
+                return Err(err);
+            }
+            if let Err(err) =
+                self.forward_one_token(slot, pos, &mut logits_out[base..base + n_vocab])
+            {
+                self.rewind_forward(slot, seq)?;
+                return Err(err);
+            }
         }
         Ok(())
+    }
+}
+
+impl<M: GgufModel + Send + Sync> Llama<M> {
+    fn rewind_forward(&mut self, slot: SlotId, committed: usize) -> Result<(), FerrumError> {
+        while self.kv.seq_len(slot)? > committed {
+            self.kv.uncommit_token(slot)?;
+        }
+        self.kv.abandon_partial(slot)
     }
 }
