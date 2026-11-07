@@ -1,7 +1,6 @@
-//! GEMV and GEMM throughput for the selected backend.
+//! Measures GEMV bytes per second and GEMM FLOP/s for the selected backend.
 //!
-//! One `cargo bench` invocation is not the five-trial acceptance report.
-//! Do not copy GB/s or FLOP/s from this run into `docs/STATUS.md`.
+//! A single invocation is not the five-trial report recorded in `docs/STATUS.md`.
 
 use std::hint::black_box;
 use std::time::Duration;

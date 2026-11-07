@@ -1,7 +1,8 @@
-//! Frozen ferrum interfaces, revision 1.
+//! Shared types for loading a GGUF model, running it, and serving completions.
 //!
-//! Public types and trait methods in this crate are the contract other crates
-//! implement. Change them only through the orchestrator.
+//! This is revision 1 of the ferrum interface: dtypes, errors, the kernel and
+//! model traits, the KV cache, the scheduler, the tokenizer, and the OpenAI
+//! request and response shapes.
 
 #![forbid(unsafe_code)]
 

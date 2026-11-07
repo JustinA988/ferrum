@@ -1,4 +1,4 @@
-//! M6a acceptance for `ferrum serve --mock`.
+//! Checks the mock server's health, model list, completion, and error JSON.
 
 #![forbid(unsafe_code)]
 

@@ -6,6 +6,7 @@ name = "ferrum-kernel-benches"
 version = "0.1.0"
 edition = "2021"
 publish = false
+description = "GEMV and GEMM throughput benchmarks"
 autobins = false
 autotests = false
 autoexamples = false

@@ -1,3 +1,5 @@
+//! GGUF metadata types and helpers for reading required fields.
+
 use crate::error::FerrumError;
 
 /// GGUF metadata value type tag. Numeric values match the GGUF specification.

@@ -1,3 +1,5 @@
+//! Dense f32 key/value storage, one slot per sequence.
+
 use ferrum_core_types::{FerrumError, KvPool, KvPoolConfig, SlotId};
 
 /// Dense f32 KV store. Each slot holds `n_layers * max_seq_len` positions; each

@@ -1,7 +1,7 @@
-//! Pre-allocated KV cache. Owned by A5.
+//! Fixed-size key/value cache for Llama layers.
 //!
-//! The concrete pool implements [`ferrum_core_types::KvPool`].
-//! Allocation happens in the constructor. `append_layer` and `commit_token` do not allocate.
+//! Storage is allocated in the constructor. Appending one layer or committing
+//! a token does not allocate.
 
 #![forbid(unsafe_code)]
 

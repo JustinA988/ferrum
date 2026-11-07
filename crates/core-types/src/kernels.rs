@@ -1,3 +1,5 @@
+//! Kernel backend choice and the numeric operations a backend must provide.
+
 use crate::dtype::DType;
 use crate::error::FerrumError;
 

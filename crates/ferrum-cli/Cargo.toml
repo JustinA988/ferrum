@@ -3,7 +3,7 @@ name = "ferrum-cli"
 version.workspace = true
 edition.workspace = true
 publish.workspace = true
-description = "ferrum command line"
+description = "Command line for the ferrum server"
 
 [[bin]]
 name = "ferrum"

@@ -1,5 +1,4 @@
-//! M3 acceptance for `ferrum_tokenizer::from_metadata`.
-//! The wave-1 tokenizer corpus at corpus/wave1.txt is now frozen.
+//! Checks Llama SentencePiece encode and decode against the pinned corpus.
 
 #![forbid(unsafe_code)]
 

@@ -1,3 +1,5 @@
+//! GGML dtypes ferrum computes: F32, F16, and Q8_0.
+
 use crate::error::FerrumError;
 
 /// Compute dtypes. `Other` is identified so a dump can name it, and is not computed on.

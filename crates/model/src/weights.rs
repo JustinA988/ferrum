@@ -1,3 +1,5 @@
+//! Weight checks, embedding lookup, and the matrix-vector used by each layer.
+
 use std::collections::HashSet;
 
 use ferrum_core_types::{

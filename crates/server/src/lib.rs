@@ -1,10 +1,8 @@
-//! HTTP API. Owned by A6.
+//! OpenAI-compatible HTTP API on actix-web.
 //!
-//! Routes: `GET /health`, `GET /v1/models`, `POST /v1/completions`.
-//! The mock calls [`ferrum_core_types::mock_completion`] and
-//! [`ferrum_core_types::mock_stream_chunks`] inside the handler. A real
-//! engine, when one exists, runs on a dedicated OS thread and sends results
-//! back on a channel. This mock does not start that thread.
+//! Serves `GET /health`, `GET /v1/models`, and `POST /v1/completions`.
+//! Revision 1 answers those routes with the mock completion. Inference is not
+//! run on this runtime.
 
 #![forbid(unsafe_code)]
 

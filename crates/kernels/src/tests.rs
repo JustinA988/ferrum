@@ -1,4 +1,4 @@
-//! Crate-local checks. Acceptance proptest and criterion belong to V1.
+//! Unit tests for the scalar reference and the AVX2 backend.
 
 use ferrum_core_types::{f16_to_f32, Backend, DType, FerrumError, GemmArgs, Kernels, RopeArgs};
 

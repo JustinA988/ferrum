@@ -1,6 +1,7 @@
-//! Calls `ferrum_gguf::load` on arbitrary bytes. The call must return a `Result`.
+//! Fuzz target for the GGUF loader.
 //!
-//! This target has not been run on this Windows host.
+//! Feeds arbitrary bytes to `ferrum_gguf::load`. A panic is a failure. A
+//! returned error is success.
 
 #![no_main]
 

@@ -1,3 +1,5 @@
+//! One Llama forward: embed, attention, SwiGLU, and logits.
+
 use ferrum_core_types::{
     llama_config, llama_tensor, CausalModel, FerrumError, GgufModel, Kernels, KvPool, KvPoolConfig,
     LlamaConfig, MetadataView, RopeArgs, SlotId, OUTPUT, OUTPUT_NORM, TOKEN_EMBD,

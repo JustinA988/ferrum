@@ -1,3 +1,5 @@
+//! Identifiers for a KV slot and a scheduled request.
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct SlotId(pub u32);
 

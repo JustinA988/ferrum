@@ -1,3 +1,5 @@
+//! Key/value cache trait. Append does not advance the sequence; commit does.
+
 use crate::error::FerrumError;
 use crate::ids::SlotId;
 

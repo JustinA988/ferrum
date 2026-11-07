@@ -1,3 +1,5 @@
+//! Llama hyperparameters and the causal-model trait a forward pass implements.
+
 use crate::error::FerrumError;
 use crate::ids::SlotId;
 use crate::metadata::{

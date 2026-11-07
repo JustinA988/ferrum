@@ -1,8 +1,7 @@
-//! Llama forward pass. Owned by A4.
+//! Llama forward pass over GGUF weights.
 //!
-//! Generic over the weight source and the kernel set:
-//! [`Llama`]`<M: GgufModel>` owns its weights and a [`PreallocatedKvPool`].
-//! It implements [`ferrum_core_types::CausalModel`].
+//! [`Llama`] owns the weights and a pre-allocated key/value cache. It
+//! implements [`ferrum_core_types::CausalModel`].
 
 #![forbid(unsafe_code)]
 

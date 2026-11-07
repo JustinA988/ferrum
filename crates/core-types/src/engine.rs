@@ -1,3 +1,5 @@
+//! Completion request, response, and mock payloads for the OpenAI HTTP API.
+
 use crate::error::FerrumError;
 use serde::{Deserialize, Serialize};
 use std::sync::mpsc;

@@ -1,3 +1,5 @@
+//! Tokenizer trait and the GGML token-type codes.
+
 use crate::error::FerrumError;
 
 pub const TOKEN_NORMAL: i32 = 1;

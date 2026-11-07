@@ -3,7 +3,7 @@ name = "ferrum-kvcache"
 version.workspace = true
 edition.workspace = true
 publish.workspace = true
-description = "Pre-allocated KV slot pool"
+description = "Fixed-size key/value cache for Llama layers"
 
 [dependencies]
 ferrum-core-types = { path = "../core-types" }

@@ -1,3 +1,5 @@
+//! Greedy continuous batcher. Prefill samples the first new token from its last logits row.
+
 use ferrum_core_types::{
     argmax, CausalModel, FerrumError, FinishReason, RequestId, SamplingParams, Scheduler,
     StepEvent, SubmitRequest,

@@ -1,3 +1,5 @@
+//! Checks `ferrum serve` argument parsing and the missing-engine exit.
+
 use std::process::{Command, Output};
 
 fn ferrum(args: &[&str]) -> Output {

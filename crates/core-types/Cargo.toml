@@ -3,7 +3,7 @@ name = "ferrum-core-types"
 version.workspace = true
 edition.workspace = true
 publish.workspace = true
-description = "Frozen interfaces for the ferrum inference server"
+description = "Shared types for GGUF loading, inference, and the OpenAI API"
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }

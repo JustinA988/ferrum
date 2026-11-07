@@ -1,6 +1,6 @@
-//! M2 acceptance for `ferrum_kernels::scalar` and `ferrum_kernels::select`.
+//! Checks scalar and AVX2 kernels against the tolerance table.
 //!
-//! Tolerances are the Architecture "Kernel tolerance" table. Scalar is the reference.
+//! The scalar backend is the reference. AVX2 must land inside those bounds.
 
 #![forbid(unsafe_code)]
 

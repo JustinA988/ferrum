@@ -1,6 +1,7 @@
-//! `ferrum serve --mock [--bind ADDR]`
+//! Command line for the ferrum server.
 //!
-//! Argument parsing is manual. A real model engine is not in revision 1.
+//! `ferrum serve --mock` starts the mock OpenAI API. Without `--mock` the
+//! process exits, because revision 1 does not wire a model into the server.
 
 #![forbid(unsafe_code)]
 

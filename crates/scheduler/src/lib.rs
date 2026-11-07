@@ -1,7 +1,7 @@
-//! Continuous batching. Owned by A5.
+//! Batches prefill and decode across active sequences.
 //!
-//! `ContinuousBatcher` implements [`ferrum_core_types::Scheduler`].
-//! One step admits decode tokens before new prefill, inside `max_batch_tokens`.
+//! [`ContinuousBatcher`] runs every waiting decode before starting new
+//! prefill, and stops the step when `max_batch_tokens` is spent.
 
 #![forbid(unsafe_code)]
 

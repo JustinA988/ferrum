@@ -1,4 +1,4 @@
-//! M4 acceptance: teacher-forced logits vs pinned llama.dll (scalar kernels).
+//! Compares teacher-forced Llama logits with a pinned llama.cpp build.
 
 #![forbid(unsafe_code)]
 

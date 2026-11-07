@@ -1,4 +1,4 @@
-// The wave-1 tokenizer corpus at corpus/wave1.txt is now frozen.
+//! Loads the frozen tokenizer corpus used by the acceptance tests.
 
 #![forbid(unsafe_code)]
 

@@ -1,3 +1,5 @@
+//! Load and forward checks against a tiny in-memory GGUF.
+
 use std::collections::HashMap;
 
 use ferrum_core_types::{

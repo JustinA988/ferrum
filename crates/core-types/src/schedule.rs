@@ -1,3 +1,5 @@
+//! Requests, sampling parameters, and the step events a scheduler emits.
+
 use crate::engine::FinishReason;
 use crate::error::FerrumError;
 use crate::ids::RequestId;

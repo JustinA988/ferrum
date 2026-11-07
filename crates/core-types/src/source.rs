@@ -1,3 +1,5 @@
+//! Tensor descriptors and the read-only view a GGUF file exposes.
+
 use crate::dtype::{ggml_type_name, shape_elements, tensor_nbytes, DType};
 use crate::error::FerrumError;
 use crate::metadata::MetadataValue;

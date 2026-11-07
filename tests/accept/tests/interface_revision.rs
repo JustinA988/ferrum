@@ -1,3 +1,5 @@
+//! Confirms the published interface revision is 1.
+
 #![forbid(unsafe_code)]
 
 #[test]

@@ -1,3 +1,5 @@
+//! Library errors and the OpenAI error JSON envelope.
+
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct ApiErrorEnvelope {
     pub error: ApiErrorObject,

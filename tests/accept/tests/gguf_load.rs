@@ -1,4 +1,4 @@
-//! M1 acceptance for `ferrum_gguf::load`, written from `docs/ARCHITECTURE.md`.
+//! Checks that `ferrum_gguf::load` reports the same tensor names, shapes, and dtypes as the architecture contract.
 
 #![forbid(unsafe_code)]
 

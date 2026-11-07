@@ -1,3 +1,5 @@
+//! Encode, decode, and byte-fallback checks for the Llama SentencePiece tokenizer.
+
 use std::collections::HashMap;
 
 use ferrum_core_types::metadata::{MetadataArray, MetadataType, MetadataValue, MetadataView};
