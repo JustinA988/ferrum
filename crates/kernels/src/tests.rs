@@ -224,14 +224,15 @@ fn scalar_rms_softmax_dot_and_rope() {
     bits_eq(&q[4..], &tail);
     let (sin0, cos0) = rope_ref(1, 10_000.0, 0, 4);
     let (sin1, cos1) = rope_ref(1, 10_000.0, 1, 4);
+    // NORMAL / adjacent pairs: (0,1) then (2,3).
     let a0 = 1.0f32;
-    let b0 = 3.0f32;
-    let a1 = 2.0f32;
+    let b0 = 2.0f32;
+    let a1 = 3.0f32;
     let b1 = 4.0f32;
     assert_eq!(q[0].to_bits(), (a0 * cos0 - b0 * sin0).to_bits());
-    assert_eq!(q[2].to_bits(), (b0 * cos0 + a0 * sin0).to_bits());
-    assert_eq!(q[1].to_bits(), (a1 * cos1 - b1 * sin1).to_bits());
-    assert_eq!(q[3].to_bits(), (b1 * cos1 + a1 * sin1).to_bits());
+    assert_eq!(q[1].to_bits(), (a0 * sin0 + b0 * cos0).to_bits());
+    assert_eq!(q[2].to_bits(), (a1 * cos1 - b1 * sin1).to_bits());
+    assert_eq!(q[3].to_bits(), (a1 * sin1 + b1 * cos1).to_bits());
 }
 
 fn rope_ref(pos: u32, theta: f32, index: usize, rope_dim: usize) -> (f32, f32) {
@@ -295,7 +296,13 @@ fn scalar_gemv_gemm_and_dequant_layout() {
     let x = vec![1.0; 32];
     let mut y = [0.0];
     k.gemv(DType::Q8_0, &packed, 1, 32, &x, &mut y).unwrap();
-    let expect: f32 = qs.iter().map(|q| f32::from(*q)).sum();
+    // ggml path: quantize x to q8_0 then integer dot. For x==1, qs_x==127 and
+    // scale_x == f16(1/127), so result is sum(qs)*127*scale_x (not bare sum(qs)).
+    let amax = 1.0f32;
+    let d = amax / 127.0;
+    let scale_x = f16_to_f32(f32_to_f16_bits(d));
+    let sumi: i32 = qs.iter().map(|q| i32::from(*q) * 127).sum();
+    let expect = (sumi as f32) * (1.0 * scale_x);
     assert_eq!(y[0].to_bits(), expect.to_bits());
 }
 

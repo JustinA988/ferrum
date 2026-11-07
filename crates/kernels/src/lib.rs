@@ -13,6 +13,7 @@
 mod math;
 mod pack;
 mod par;
+mod q8_dot;
 mod scalar;
 mod validate;
 

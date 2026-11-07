@@ -20,7 +20,8 @@ impl MockModel {
     fn f32_tensor(name: &str, shape: Vec<u64>, fill: f32) -> (TensorDesc, Vec<u8>) {
         let elems = shape.iter().product::<u64>() as usize;
         let mut data = vec![0u8; elems * 4];
-        for chunk in data.chunks_exact_mut(4) {
+        let (chunks, _) = data.as_chunks_mut::<4>();
+        for chunk in chunks {
             chunk.copy_from_slice(&fill.to_le_bytes());
         }
         let desc = TensorDesc::try_new(name, shape, 0, 0, data.len() as u64).unwrap();

@@ -1,8 +1,8 @@
 use std::collections::HashSet;
 
 use ferrum_core_types::{
-    llama_tensor, FerrumError, GgufModel, Kernels, LlamaConfig, TensorDesc, OUTPUT, OUTPUT_NORM,
-    TOKEN_EMBD,
+    f16_to_f32, llama_tensor, DType, FerrumError, GgufModel, Kernels, LlamaConfig, TensorDesc,
+    OUTPUT, OUTPUT_NORM, Q8_0_BLOCK, Q8_0_BLOCK_BYTES, TOKEN_EMBD,
 };
 
 pub fn linear<M: GgufModel>(
@@ -16,6 +16,78 @@ pub fn linear<M: GgufModel>(
     let (rows, cols) = gemv_dims(&desc.shape)?;
     let w = model.tensor_bytes(name)?;
     kernels.gemv(desc.dtype, w, rows, cols, x, y)
+}
+
+/// Column gather for `token_embd.weight` stored as GGUF `[n_embd, n_vocab]` (ne0 contiguous).
+pub fn embed_token<M: GgufModel>(
+    model: &M,
+    token_id: u32,
+    config: &LlamaConfig,
+    out: &mut [f32],
+) -> Result<(), FerrumError> {
+    let n_embd = config.n_embd as usize;
+    let n_vocab = config.n_vocab as usize;
+    if out.len() != n_embd {
+        return Err(FerrumError::model("embed output length mismatch"));
+    }
+    if token_id as usize >= n_vocab {
+        return Err(FerrumError::model("token id outside vocab"));
+    }
+    let desc = model.tensor(TOKEN_EMBD)?;
+    if desc.shape.len() != 2
+        || desc.shape[0] as usize != n_embd
+        || desc.shape[1] as usize != n_vocab
+    {
+        return Err(FerrumError::model("token_embd shape mismatch"));
+    }
+    let w = model.tensor_bytes(TOKEN_EMBD)?;
+    let t = token_id as usize;
+    match desc.dtype {
+        DType::F32 => {
+            for (d, slot) in out.iter_mut().enumerate().take(n_embd) {
+                let idx = d + t * n_embd;
+                let off = idx
+                    .checked_mul(4)
+                    .ok_or_else(|| FerrumError::model("embed overflow"))?;
+                let chunk = w
+                    .get(off..off + 4)
+                    .ok_or_else(|| FerrumError::model("embed weight out of range"))?;
+                *slot = f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
+            }
+        }
+        DType::F16 => {
+            for (d, slot) in out.iter_mut().enumerate().take(n_embd) {
+                let idx = d + t * n_embd;
+                let off = idx
+                    .checked_mul(2)
+                    .ok_or_else(|| FerrumError::model("embed overflow"))?;
+                let chunk = w
+                    .get(off..off + 2)
+                    .ok_or_else(|| FerrumError::model("embed weight out of range"))?;
+                let bits = u16::from_le_bytes([chunk[0], chunk[1]]);
+                *slot = f16_to_f32(bits);
+            }
+        }
+        DType::Q8_0 => {
+            for (d, slot) in out.iter_mut().enumerate().take(n_embd) {
+                let idx = d + t * n_embd;
+                let block = idx / Q8_0_BLOCK;
+                let lane = idx % Q8_0_BLOCK;
+                let off = block
+                    .checked_mul(Q8_0_BLOCK_BYTES)
+                    .ok_or_else(|| FerrumError::model("embed overflow"))?;
+                let chunk = w
+                    .get(off..off + Q8_0_BLOCK_BYTES)
+                    .ok_or_else(|| FerrumError::model("embed weight out of range"))?;
+                let scale_bits = u16::from_le_bytes([chunk[0], chunk[1]]);
+                let scale = f16_to_f32(scale_bits);
+                let q = i8::from_ne_bytes([chunk[2 + lane]]);
+                *slot = scale * f32::from(q);
+            }
+        }
+        DType::Other(_) => return Err(FerrumError::model("unsupported embed dtype")),
+    }
+    Ok(())
 }
 
 pub fn dequant_weight<M: GgufModel>(

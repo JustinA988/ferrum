@@ -226,4 +226,34 @@ mod tests {
         assert_eq!(pool.v(slot, 1, 0).unwrap(), v);
         pool.free(slot).unwrap();
     }
+
+    #[test]
+    fn append_must_be_in_layer_order_and_commit_needs_all_layers() {
+        let mut pool = PreallocatedKvPool::new(tiny_config()).unwrap();
+        let slot = pool.alloc().unwrap();
+        let k = [1.0, 2.0, 3.0, 4.0];
+        let v = [5.0, 6.0, 7.0, 8.0];
+        assert!(pool.append_layer(slot, 1, &k, &v).is_err());
+        pool.append_layer(slot, 0, &k, &v).unwrap();
+        assert!(pool.commit_token(slot).is_err());
+        pool.append_layer(slot, 1, &k, &v).unwrap();
+        pool.commit_token(slot).unwrap();
+        assert!(pool.k(slot, 0, 1).is_err());
+    }
+
+    #[test]
+    fn constructor_allocates_dense_storage_without_later_growth() {
+        let cfg = tiny_config();
+        let expected =
+            cfg.max_slots * cfg.n_layers * cfg.max_seq_len * cfg.n_kv_heads * cfg.head_dim * 2;
+        let mut pool = PreallocatedKvPool::new(cfg).unwrap();
+        assert_eq!(pool.storage.len(), expected);
+        let slot = pool.alloc().unwrap();
+        let k = [9.0, 8.0, 7.0, 6.0];
+        let v = [1.0, 2.0, 3.0, 4.0];
+        pool.append_layer(slot, 0, &k, &v).unwrap();
+        pool.append_layer(slot, 1, &k, &v).unwrap();
+        pool.commit_token(slot).unwrap();
+        assert_eq!(pool.storage.len(), expected);
+    }
 }

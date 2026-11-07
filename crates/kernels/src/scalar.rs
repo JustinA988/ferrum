@@ -170,14 +170,16 @@ pub(crate) fn rope_tensor(
     if head_dim == 0 || rope_dim == 0 || rope_dim > head_dim {
         return;
     }
-    let half = rope_dim / 2;
+    // llama.cpp GGML_ROPE_TYPE_NORMAL: consecutive pairs (2i, 2i+1).
+    // (Half-split / NeoX is a different mode; Llama-architecture GGUF uses NORMAL.)
     for head in data.chunks_exact_mut(head_dim) {
-        for i in 0..half {
-            let (sin, cos) = math::rope_sin_cos(pos, theta, i, rope_dim);
+        for i in (0..rope_dim).step_by(2) {
+            let pair = i / 2;
+            let (sin, cos) = math::rope_sin_cos(pos, theta, pair, rope_dim);
             let a = head[i];
-            let b = head[i + half];
+            let b = head[i + 1];
             head[i] = a * cos - b * sin;
-            head[i + half] = b * cos + a * sin;
+            head[i + 1] = a * sin + b * cos;
         }
     }
 }
@@ -189,6 +191,15 @@ pub(crate) fn gemv_into(dtype: DType, w: &[u8], cols: usize, x: &[f32], y: &mut 
     if stride == 0 {
         return;
     }
+    if dtype == DType::Q8_0 {
+        // ggml mul_mat quantizes the f32 activation to Q8_0, then q8·q8.
+        crate::q8_dot::with_quantized_activation(x, |x_q| {
+            for (row, slot) in w.chunks_exact(stride).zip(y.iter_mut()) {
+                *slot = crate::q8_dot::dot_q8_row_q8_act(row, x_q);
+            }
+        });
+        return;
+    }
     for (row, slot) in w.chunks_exact(stride).zip(y.iter_mut()) {
         *slot = dot_row(dtype, row, x);
     }
@@ -198,8 +209,8 @@ fn dot_row(dtype: DType, row: &[u8], x: &[f32]) -> f32 {
     match dtype {
         DType::F32 => dot_f32_row(row, x),
         DType::F16 => dot_f16_row(row, x),
-        DType::Q8_0 => dot_q8_row(row, x),
-        DType::Other(_) => 0.0,
+        // Q8 matmul is only via `gemv_into` → `q8_dot` (never weight×f32).
+        DType::Q8_0 | DType::Other(_) => 0.0,
     }
 }
 
@@ -221,31 +232,6 @@ fn dot_f16_row(row: &[u8], x: &[f32]) -> f32 {
             break;
         };
         acc += w * xv;
-    }
-    acc
-}
-
-fn dot_q8_row(row: &[u8], x: &[f32]) -> f32 {
-    let mut acc = 0.0f32;
-    let mut x_off = 0usize;
-    let (blocks, _) = row.as_chunks::<Q8_0_BLOCK_BYTES>();
-    for block in blocks {
-        if x_off >= x.len() {
-            break;
-        }
-        let Some(scale) = pack::q8_scale(block) else {
-            break;
-        };
-        for j in 0..Q8_0_BLOCK {
-            let Some(&xv) = x.get(x_off + j) else {
-                return acc;
-            };
-            let Some(&byte) = block.get(2 + j) else {
-                return acc;
-            };
-            acc += (scale * pack::q8_quant(byte)) * xv;
-        }
-        x_off += Q8_0_BLOCK;
     }
     acc
 }

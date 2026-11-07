@@ -1,11 +1,11 @@
 use ferrum_core_types::{
     llama_config, llama_tensor, CausalModel, FerrumError, GgufModel, Kernels, KvPool, KvPoolConfig,
-    LlamaConfig, MetadataView, RopeArgs, SlotId, TOKEN_EMBD,
+    LlamaConfig, MetadataView, RopeArgs, SlotId, OUTPUT, OUTPUT_NORM, TOKEN_EMBD,
 };
 use ferrum_kernels::scalar;
 use ferrum_kvcache::PreallocatedKvPool;
 
-use crate::weights::{dequant_weight, gemv_dims, linear, validate_weights};
+use crate::weights::{dequant_weight, embed_token, linear, validate_weights};
 
 struct MetaAdapter<'a, M: GgufModel>(&'a M);
 
@@ -15,8 +15,30 @@ impl<M: GgufModel> MetadataView for MetaAdapter<'_, M> {
     }
 }
 
+/// Output projection name fixed at load (`output.weight` or tied `token_embd.weight`).
+#[derive(Clone, Copy)]
+enum OutputProj {
+    Output,
+    TiedEmbed,
+}
+
+impl OutputProj {
+    fn name(self) -> &'static str {
+        match self {
+            Self::Output => OUTPUT,
+            Self::TiedEmbed => TOKEN_EMBD,
+        }
+    }
+}
+
+/// RMS norm weights dequantized once at load.
+struct NormWeights {
+    attn: Vec<Vec<f32>>,
+    ffn: Vec<Vec<f32>>,
+    output: Vec<f32>,
+}
+
 struct WorkBuffers {
-    embed_one_hot: Vec<f32>,
     norm: Vec<f32>,
     q: Vec<f32>,
     k: Vec<f32>,
@@ -28,19 +50,16 @@ struct WorkBuffers {
     scores: Vec<f32>,
     head_acc: Vec<f32>,
     scratch: Vec<f32>,
-    norm_weight: Vec<f32>,
 }
 
 impl WorkBuffers {
     fn new(config: &LlamaConfig, max_seq_len: usize) -> Self {
         let n_embd = config.n_embd as usize;
-        let n_vocab = config.n_vocab as usize;
         let n_head = config.n_head as usize;
         let n_kv = config.n_head_kv as usize;
         let head_dim = config.head_dim as usize;
         let n_ff = config.n_ff as usize;
         Self {
-            embed_one_hot: vec![0.0; n_vocab],
             norm: vec![0.0; n_embd],
             q: vec![0.0; n_head * head_dim],
             k: vec![0.0; n_kv * head_dim],
@@ -52,7 +71,6 @@ impl WorkBuffers {
             scores: vec![0.0; max_seq_len],
             head_acc: vec![0.0; head_dim],
             scratch: vec![0.0; n_embd.max(n_ff)],
-            norm_weight: vec![0.0; n_embd],
         }
     }
 }
@@ -63,7 +81,8 @@ pub struct Llama<M> {
     config: LlamaConfig,
     kernels: Box<dyn Kernels>,
     kv: PreallocatedKvPool,
-    output_weight: String,
+    output_proj: OutputProj,
+    norms: NormWeights,
     work: WorkBuffers,
     hidden: Vec<f32>,
 }
@@ -73,7 +92,15 @@ impl<M: GgufModel + Send + Sync> Llama<M> {
     /// callers can rebuild with [`ferrum_kernels::select`] later.
     pub fn load(model: M, max_slots: usize, max_seq_len: usize) -> Result<Self, FerrumError> {
         let config = llama_config(&MetaAdapter(&model))?;
-        let output_weight = validate_weights(&model, &config)?;
+        let output_proj = match validate_weights(&model, &config)?.as_str() {
+            OUTPUT => OutputProj::Output,
+            TOKEN_EMBD => OutputProj::TiedEmbed,
+            other => {
+                return Err(FerrumError::model(format!(
+                    "unexpected output weight name {other}"
+                )))
+            }
+        };
         let kv = PreallocatedKvPool::new(KvPoolConfig {
             n_layers: config.n_layer as usize,
             n_kv_heads: config.n_head_kv as usize,
@@ -81,14 +108,17 @@ impl<M: GgufModel + Send + Sync> Llama<M> {
             max_seq_len,
             max_slots,
         })?;
+        let kernels = scalar();
+        let norms = load_norm_weights(&model, kernels.as_ref(), &config)?;
         Ok(Self {
             work: WorkBuffers::new(&config, max_seq_len),
             hidden: vec![0.0; config.n_embd as usize],
             model,
             config,
-            kernels: scalar(),
+            kernels,
             kv,
-            output_weight,
+            output_proj,
+            norms,
         })
     }
 
@@ -106,26 +136,15 @@ impl<M: GgufModel + Send + Sync> Llama<M> {
     }
 
     fn embed(&mut self, token_id: u32) -> Result<(), FerrumError> {
-        let n_vocab = self.config.n_vocab as usize;
-        if token_id as usize >= n_vocab {
-            return Err(FerrumError::model("token id outside vocab"));
-        }
-        let desc = self.model.tensor(TOKEN_EMBD)?;
-        let (rows, cols) = gemv_dims(&desc.shape)?;
-        let w = self.model.tensor_bytes(TOKEN_EMBD)?;
-        self.work.embed_one_hot.fill(0.0);
-        self.work.embed_one_hot[token_id as usize] = 1.0;
-        self.kernels.gemv(
-            desc.dtype,
-            w,
-            rows,
-            cols,
-            &self.work.embed_one_hot,
-            &mut self.hidden,
-        )
+        embed_token(&self.model, token_id, &self.config, &mut self.hidden)
     }
 
-    fn forward_one_token(&mut self, slot: SlotId, pos: u32) -> Result<Vec<f32>, FerrumError> {
+    fn forward_one_token(
+        &mut self,
+        slot: SlotId,
+        pos: u32,
+        logits_out: &mut [f32],
+    ) -> Result<(), FerrumError> {
         let n_layer = self.config.n_layer as usize;
         let n_head = self.config.n_head as usize;
         let n_kv = self.config.n_head_kv as usize;
@@ -133,24 +152,26 @@ impl<M: GgufModel + Send + Sync> Llama<M> {
         let n_ff = self.config.n_ff as usize;
         let n_embd = self.config.n_embd as usize;
         let n_vocab = self.config.n_vocab as usize;
+        if logits_out.len() != n_vocab {
+            return Err(FerrumError::model("logits row length mismatch"));
+        }
         let pos_usize = pos as usize;
         let kv_group = n_head / n_kv;
         let scale = 1.0 / (head_dim as f32).sqrt();
         let eps = self.config.rms_norm_eps;
         let rope_dim = self.config.rope_dim as usize;
         let rope_theta = self.config.rope_freq_base;
-        let output_weight = self.output_weight.clone();
+        let output_name = self.output_proj.name();
 
         let model = &self.model;
         let kernels = self.kernels.as_ref();
         let hidden = &mut self.hidden;
         let work = &mut self.work;
         let kv = &mut self.kv;
+        let norms = &self.norms;
 
         for layer in 0..n_layer {
-            let attn_norm = llama_tensor(layer as u32, "attn_norm");
-            dequant_weight(model, kernels, &attn_norm, &mut work.norm_weight)?;
-            kernels.rms_norm(hidden, &work.norm_weight, eps, &mut work.norm)?;
+            kernels.rms_norm(hidden, &norms.attn[layer], eps, &mut work.norm)?;
 
             linear(
                 model,
@@ -226,9 +247,7 @@ impl<M: GgufModel + Send + Sync> Llama<M> {
             kernels.add(hidden, &work.ffn, &mut work.scratch[..n_embd])?;
             hidden.copy_from_slice(&work.scratch[..n_embd]);
 
-            let ffn_norm = llama_tensor(layer as u32, "ffn_norm");
-            dequant_weight(model, kernels, &ffn_norm, &mut work.norm_weight)?;
-            kernels.rms_norm(hidden, &work.norm_weight, eps, &mut work.norm)?;
+            kernels.rms_norm(hidden, &norms.ffn[layer], eps, &mut work.norm)?;
 
             linear(
                 model,
@@ -257,20 +276,44 @@ impl<M: GgufModel + Send + Sync> Llama<M> {
             hidden.copy_from_slice(&work.scratch[..n_embd]);
         }
 
+        kernels.rms_norm(hidden, &norms.output, eps, &mut work.norm)?;
+        linear(model, kernels, output_name, &work.norm, logits_out)?;
+
+        kv.commit_token(slot)?;
+        Ok(())
+    }
+}
+
+fn load_norm_weights<M: GgufModel>(
+    model: &M,
+    kernels: &dyn Kernels,
+    config: &LlamaConfig,
+) -> Result<NormWeights, FerrumError> {
+    let n_embd = config.n_embd as usize;
+    let n_layer = config.n_layer as usize;
+    let mut attn = Vec::with_capacity(n_layer);
+    let mut ffn = Vec::with_capacity(n_layer);
+    for layer in 0..n_layer {
+        let mut w = vec![0.0; n_embd];
         dequant_weight(
             model,
             kernels,
-            ferrum_core_types::OUTPUT_NORM,
-            &mut work.norm_weight,
+            &llama_tensor(layer as u32, "attn_norm"),
+            &mut w,
         )?;
-        kernels.rms_norm(hidden, &work.norm_weight, eps, &mut work.norm)?;
-
-        let mut logits = vec![0.0; n_vocab];
-        linear(model, kernels, &output_weight, &work.norm, &mut logits)?;
-
-        kv.commit_token(slot)?;
-        Ok(logits)
+        attn.push(w);
+        let mut w = vec![0.0; n_embd];
+        dequant_weight(
+            model,
+            kernels,
+            &llama_tensor(layer as u32, "ffn_norm"),
+            &mut w,
+        )?;
+        ffn.push(w);
     }
+    let mut output = vec![0.0; n_embd];
+    dequant_weight(model, kernels, OUTPUT_NORM, &mut output)?;
+    Ok(NormWeights { attn, ffn, output })
 }
 
 impl<M: GgufModel + Send + Sync> CausalModel for Llama<M> {
@@ -313,9 +356,8 @@ impl<M: GgufModel + Send + Sync> CausalModel for Llama<M> {
             let pos = position0
                 .checked_add(idx as u32)
                 .ok_or_else(|| FerrumError::model("position overflow"))?;
-            let logits = self.forward_one_token(slot, pos)?;
             let base = idx * n_vocab;
-            logits_out[base..base + n_vocab].copy_from_slice(&logits);
+            self.forward_one_token(slot, pos, &mut logits_out[base..base + n_vocab])?;
         }
         Ok(())
     }

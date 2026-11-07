@@ -119,12 +119,12 @@ out[i] = x[i] * inv * weight[i]
 
 with the mean over `x.len()`. SiLU is `x * sigmoid(x)`, sigmoid `1 / (1 + exp(-x))`.
 
-RoPE is Llama half-split, not NeoX interleaved pairs. `Kernels::rope` takes `RopeArgs`. `Kernels::gemm` takes `GemmArgs` (`n_tokens == 0` writes nothing). For `i` in `0 .. rope_dim/2`:
+RoPE matches llama.cpp `GGML_ROPE_TYPE_NORMAL`: consecutive pairs within each head, not NeoX half-split. `Kernels::rope` takes `RopeArgs`. `Kernels::gemm` takes `GemmArgs` (`n_tokens == 0` writes nothing). For pair index `i` in `0 .. rope_dim/2`:
 
 ```
 freq = pos / theta ^ (2i / rope_dim)
-q'[i]            = q[i] * cos(freq) - q[i + rope_dim/2] * sin(freq)
-q'[i+rope_dim/2] = q[i + rope_dim/2] * cos(freq) + q[i] * sin(freq)
+q'[2i]     = q[2i] * cos(freq) - q[2i+1] * sin(freq)
+q'[2i+1]   = q[2i] * sin(freq) + q[2i+1] * cos(freq)
 ```
 
 Components from `rope_dim` to `head_dim` are unchanged. The same transform applies independently to each query head and each key head. `pos` is the absolute token position.

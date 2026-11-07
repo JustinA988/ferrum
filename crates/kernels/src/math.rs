@@ -25,9 +25,10 @@ pub(crate) fn softmax_max(x: &[f32]) -> f32 {
     max
 }
 
-/// Llama half-split angle at pair index `index` (`0 .. rope_dim/2`).
+/// RoPE angle at pair index `index` (`0 .. rope_dim/2`).
 ///
 /// Returns `(sin, cos)` of `pos / theta ^ (2 * index / rope_dim)`.
+/// Pairing is consecutive `(2i, 2i+1)` (llama.cpp `GGML_ROPE_TYPE_NORMAL`).
 pub(crate) fn rope_sin_cos(pos: u32, theta: f32, index: usize, rope_dim: usize) -> (f32, f32) {
     let freq = pos as f32 / theta.powf((2 * index) as f32 / rope_dim as f32);
     freq.sin_cos()

@@ -10,6 +10,7 @@ ferrum-core-types = { path = "../../crates/core-types" }
 ferrum-gguf = { path = "../../crates/gguf" }
 ferrum-kernels = { path = "../../crates/kernels" }
 ferrum-tokenizer = { path = "../../crates/tokenizer" }
+ferrum-model = { path = "../../crates/model" }
 serde_json = "1.0.154"
 
 [dev-dependencies]

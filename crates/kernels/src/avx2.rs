@@ -150,6 +150,15 @@ fn gemv_into(dtype: DType, w: &[u8], cols: usize, x: &[f32], y: &mut [f32]) {
     if stride == 0 {
         return;
     }
+    if dtype == DType::Q8_0 {
+        // Same ggml q8·q8 path as scalar (activation quantized once per vector).
+        crate::q8_dot::with_quantized_activation(x, |x_q| {
+            for (row, slot) in w.chunks_exact(stride).zip(y.iter_mut()) {
+                *slot = crate::q8_dot::dot_q8_row_q8_act(row, x_q);
+            }
+        });
+        return;
+    }
     for (row, slot) in w.chunks_exact(stride).zip(y.iter_mut()) {
         // SAFETY: `select` built this backend only after AVX2 and FMA were detected.
         // `dot_row_avx2` issues only in-bounds unaligned loads for this row and `x`.
@@ -491,54 +500,16 @@ unsafe fn rope_avx2(data: &mut [f32], head_dim: usize, rope_dim: usize, pos: u32
     if head_dim == 0 || rope_dim == 0 || rope_dim > head_dim {
         return;
     }
-    let half = rope_dim / 2;
+    // Match scalar GGML_ROPE_TYPE_NORMAL: consecutive pairs. Vectorizing the
+    // interleaved (even,odd) pattern is awkward; keep the scalar loop.
     for head in data.chunks_exact_mut(head_dim) {
-        let mut i = 0usize;
-        while i + LANES <= half {
-            let mut sin_a = [0.0f32; LANES];
-            let mut cos_a = [0.0f32; LANES];
-            for k in 0..LANES {
-                let (sin, cos) = math::rope_sin_cos(pos, theta, i + k, rope_dim);
-                sin_a[k] = sin;
-                cos_a[k] = cos;
-            }
-            // SAFETY: AVX2 and FMA were detected before this backend is used.
-            // Pair `i` and pair `i + half` are inside this head for 8 f32s
-            // (32 bytes): `i + 8 <= half` and `half + i + 8 <= rope_dim <= head_dim`.
-            // Loads and stores are unaligned. The two halves do not overlap.
-            unsafe {
-                let base = head.as_mut_ptr();
-                let a = _mm256_loadu_ps(base.add(i));
-                let b = _mm256_loadu_ps(base.add(i + half));
-                let sin_v = _mm256_loadu_ps(sin_a.as_ptr());
-                let cos_v = _mm256_loadu_ps(cos_a.as_ptr());
-                if all_finite256(a)
-                    && all_finite256(b)
-                    && all_finite256(sin_v)
-                    && all_finite256(cos_v)
-                {
-                    let new_a = _mm256_sub_ps(_mm256_mul_ps(a, cos_v), _mm256_mul_ps(b, sin_v));
-                    let new_b = _mm256_add_ps(_mm256_mul_ps(b, cos_v), _mm256_mul_ps(a, sin_v));
-                    _mm256_storeu_ps(base.add(i), new_a);
-                    _mm256_storeu_ps(base.add(i + half), new_b);
-                } else {
-                    for k in 0..LANES {
-                        let scalar_a = head[i + k] * cos_a[k] - head[i + half + k] * sin_a[k];
-                        let scalar_b = head[i + half + k] * cos_a[k] + head[i + k] * sin_a[k];
-                        head[i + k] = scalar_a;
-                        head[i + half + k] = scalar_b;
-                    }
-                }
-            }
-            i += LANES;
-        }
-        while i < half {
-            let (sin, cos) = math::rope_sin_cos(pos, theta, i, rope_dim);
+        for i in (0..rope_dim).step_by(2) {
+            let pair = i / 2;
+            let (sin, cos) = math::rope_sin_cos(pos, theta, pair, rope_dim);
             let a = head[i];
-            let b = head[i + half];
+            let b = head[i + 1];
             head[i] = a * cos - b * sin;
-            head[i + half] = b * cos + a * sin;
-            i += 1;
+            head[i + 1] = a * sin + b * cos;
         }
     }
 }
@@ -552,8 +523,8 @@ unsafe fn dot_row_avx2(dtype: DType, row: &[u8], x: &[f32]) -> f32 {
     match dtype {
         DType::F32 => unsafe { dot_f32_row(row, x) },
         DType::F16 => unsafe { dot_f16_row(row, x) },
-        DType::Q8_0 => unsafe { dot_q8_row(row, x) },
-        DType::Other(_) => 0.0,
+        // Q8 matmul is only via `gemv_into` → `q8_dot` (never weight×f32).
+        DType::Q8_0 | DType::Other(_) => 0.0,
     }
 }
 
@@ -630,62 +601,6 @@ unsafe fn dot_f16_row(row: &[u8], x: &[f32]) -> f32 {
         };
         acc += w * x[k];
         k += 1;
-    }
-    acc
-}
-
-/// # Safety
-///
-/// AVX2 and FMA are enabled.
-#[target_feature(enable = "avx2,fma")]
-unsafe fn dot_q8_row(row: &[u8], x: &[f32]) -> f32 {
-    let mut acc = 0.0f32;
-    let mut x_off = 0usize;
-    let (blocks, _) = row.as_chunks::<Q8_0_BLOCK_BYTES>();
-    for block in blocks {
-        if x_off + Q8_0_BLOCK > x.len() {
-            break;
-        }
-        let Some(scale) = pack::q8_scale(block) else {
-            break;
-        };
-        let qs = &block[2..2 + Q8_0_BLOCK];
-        let x_block = &x[x_off..x_off + Q8_0_BLOCK];
-        if !scale.is_finite() {
-            for j in 0..Q8_0_BLOCK {
-                acc += (scale * pack::q8_quant(qs[j])) * x_block[j];
-            }
-        } else {
-            let scale_v = _mm256_set1_ps(scale);
-            let mut j = 0usize;
-            while j + LANES <= Q8_0_BLOCK {
-                // SAFETY: AVX2 and FMA were detected before this backend is used.
-                // `qs` has 32 bytes; the 8-byte load at `j` (0, 8, 16, 24) is
-                // in-bounds and unaligned. `x_block` is in-bounds for 8 f32s
-                // (32 bytes) at `j`. The lane store is unaligned.
-                unsafe {
-                    let qv = _mm_loadl_epi64(qs.as_ptr().add(j).cast::<__m128i>());
-                    let qf = _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(qv));
-                    let vx = _mm256_loadu_ps(x_block.as_ptr().add(j));
-                    if all_finite256(vx) {
-                        let scaled = _mm256_mul_ps(qf, scale_v);
-                        let vp = _mm256_mul_ps(scaled, vx);
-                        let mut prod = [0.0f32; LANES];
-                        store256(&mut prod, vp);
-                        for lane in prod {
-                            acc += lane;
-                        }
-                    } else {
-                        for lane in 0..LANES {
-                            let q = pack::q8_quant(qs[j + lane]);
-                            acc += (scale * q) * x_block[j + lane];
-                        }
-                    }
-                }
-                j += LANES;
-            }
-        }
-        x_off += Q8_0_BLOCK;
     }
     acc
 }

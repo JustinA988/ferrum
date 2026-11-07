@@ -69,7 +69,7 @@ pub trait Kernels: Send + Sync {
     /// Dot product. Empty inputs are an error.
     fn dot(&self, a: &[f32], b: &[f32]) -> Result<f32, FerrumError>;
 
-    /// Llama half-split RoPE on one token. See `docs/ARCHITECTURE.md`.
+    /// Llama `GGML_ROPE_TYPE_NORMAL` (adjacent-pair) RoPE on one token. See `docs/ARCHITECTURE.md`.
     fn rope(&self, args: RopeArgs<'_>) -> Result<(), FerrumError>;
 
     fn gemv(
