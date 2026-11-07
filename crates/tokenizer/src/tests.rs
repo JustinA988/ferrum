@@ -1,4 +1,7 @@
-//! Encode, decode, and byte-fallback checks for the Llama SentencePiece tokenizer.
+//! Encode and decode checks on a vocabulary built in the test.
+//!
+//! Covers a round trip, byte fallback, merge order, special tokens, and
+//! metadata that must be rejected without a panic.
 
 use std::collections::HashMap;
 

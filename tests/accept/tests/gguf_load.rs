@@ -1,4 +1,10 @@
-//! Checks that `ferrum_gguf::load` reports the same tensor names, shapes, and dtypes as the architecture contract.
+//! `ferrum_gguf::load` against a file built in the test.
+//!
+//! Checks tensor names, shapes, dtypes, dump text, and `Send + Sync`. A bad
+//! magic, a truncated header, a huge array count, or an illegal bool must
+//! return `FerrumError::Gguf`. A second test is ignored unless `FERRUM_MODEL`
+//! and `FERRUM_LLAMA_CPP` are set. That test compares ferrum's dump with the
+//! pinned llama.cpp reader.
 
 #![forbid(unsafe_code)]
 

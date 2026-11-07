@@ -1,6 +1,8 @@
-//! Checks scalar and AVX2 kernels against the tolerance table.
+//! Scalar and AVX2 must agree inside the tolerance table.
 //!
-//! The scalar backend is the reference. AVX2 must land inside those bounds.
+//! The scalar backend is the reference. Finite `add` and `mul` match it bit for
+//! bit. Reductions and SiLU match within a relative tolerance. Q8_0 GEMV and
+//! GEMM use the same bound. Property tests generate the inputs.
 
 #![forbid(unsafe_code)]
 

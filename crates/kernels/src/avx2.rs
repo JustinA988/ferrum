@@ -1,18 +1,17 @@
-//! AVX2+FMA backend. Loads and stores are unaligned.
+//! AVX2+FMA `Kernels` implementation. Loads and stores are unaligned.
 //!
-//! `add` and `mul` use `addps` / `mulps` (not FMA) so finite lanes match scalar
-//! IEEE results. FMA is used in the exponential for SiLU and softmax.
-//! MXCSR is left alone: flush-to-zero would break bitwise `add` and `mul`.
+//! `add` and `mul` use `addps` and `mulps`, so finite lanes match the scalar
+//! IEEE result. FMA is used in the exponential for SiLU and softmax. MXCSR is
+//! left alone: flush-to-zero would break bitwise `add` and `mul`.
 //!
-//! When every lane in a chunk is finite, the SIMD result is stored or accumulated
-//! directly. Any non-finite lane in the chunk falls back to the scalar formula for
-//! that chunk only.
+//! A chunk whose lanes are all finite is stored directly. A chunk with any
+//! non-finite lane uses the scalar formula for that chunk only.
 //!
 //! # Safety
 //!
-//! Every `target_feature` function in this module requires AVX2 and FMA on the
-//! host CPU. [`crate::select`] is the only constructor, and it checks both
-//! features. Detection is per CPU, so rayon workers may call these functions.
+//! Every `target_feature` function here requires AVX2 and FMA. `crate::select`
+//! is the only constructor, and it checks both features. Detection is per CPU,
+//! so rayon workers on that machine may call these functions.
 
 #[cfg(target_arch = "x86")]
 use std::arch::x86::*;

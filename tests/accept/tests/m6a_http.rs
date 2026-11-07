@@ -1,4 +1,9 @@
-//! Checks the mock server's health, model list, completion, and error JSON.
+//! Mock HTTP server.
+//!
+//! Starts `ferrum serve --mock` and checks `/health`, `/v1/models`, a blocking
+//! completion, a stream, and the error JSON over a raw socket. A second test
+//! is ignored unless the `openai` Python package imports. That test repeats
+//! the completion and the stream through the official client.
 
 #![forbid(unsafe_code)]
 

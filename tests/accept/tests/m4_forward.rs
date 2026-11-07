@@ -1,4 +1,11 @@
-//! Compares teacher-forced Llama logits with a pinned llama.cpp build.
+//! Teacher-forced logits against a pinned llama.cpp build.
+//!
+//! Ignored unless run with `--ignored`. `FERRUM_MODEL` is the GGUF.
+//! `FERRUM_LLAMA_CPP` is that build's directory. The test encodes five prompts,
+//! forwards each one, and compares every logit row with `oracle/m4_logits.py`.
+//! The absolute bound is 0.1 for F16 and F32 embeddings and 2.0 for Q8_0.
+//! `FERRUM_M4_MAX_DIFF` overrides it. Top-1 must agree on at least 99 percent
+//! of positions.
 
 #![forbid(unsafe_code)]
 

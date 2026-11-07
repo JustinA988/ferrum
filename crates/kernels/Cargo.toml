@@ -3,7 +3,7 @@ name = "ferrum-kernels"
 version.workspace = true
 edition.workspace = true
 publish.workspace = true
-description = "Scalar and AVX2 math for Llama inference"
+description = "Scalar reference and AVX2+FMA math for the Llama forward pass"
 
 [dependencies]
 ferrum-core-types = { path = "../core-types" }

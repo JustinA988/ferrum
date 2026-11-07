@@ -1,5 +1,8 @@
-//! Token-parallel GEMM. Rayon runs on the inference thread's call, not on
-//! an async worker. Each token writes a disjoint slice of `y`.
+//! GEMM split across tokens.
+//!
+//! Rayon runs on the inference thread that called the kernel, not on an async
+//! worker. Each token writes its own slice of `y`, so workers do not share an
+//! output element.
 
 use rayon::prelude::*;
 

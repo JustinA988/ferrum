@@ -1,3 +1,4 @@
+# Build output, downloaded weights, and local fuzz artifacts.
 /target
 **/*.rs.bk
 .DS_Store

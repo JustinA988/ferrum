@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Teacher-forced logits via pinned llama.dll (M4 offline oracle).
+"""Offline oracle for teacher-forced logits.
+
+Loads the pinned llama.cpp shared library, runs the token ids from stdin, and
+prints one logit row per position. The Rust acceptance test compares those
+rows with its own forward pass. This script is not part of the server.
 
 Stdin JSON: {"llama_dir": "...", "model": "...", "tokens": [u32, ...]}
 Stdout JSON: {"logits": [[float, ...], ...]}

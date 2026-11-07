@@ -1,4 +1,8 @@
-//! Scalar reference. Reductions accumulate left to right in `f32`.
+//! Reference `Kernels` implementation.
+//!
+//! Plain `f32` loops. Dot products and RMSNorm accumulate left to right.
+//! Q8_0 matmul uses the same block product as the AVX2 path. Acceptance tests
+//! treat the numbers from this file as the ones the SIMD backend must match.
 
 use ferrum_core_types::{
     Backend, DType, FerrumError, GemmArgs, Kernels, RopeArgs, Q8_0_BLOCK, Q8_0_BLOCK_BYTES,

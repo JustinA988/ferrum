@@ -1,4 +1,6 @@
-//! Confirms the published interface revision is 1.
+//! Guards the published interface revision.
+//!
+//! Fails if `ferrum-core-types` reports anything other than revision 1.
 
 #![forbid(unsafe_code)]
 

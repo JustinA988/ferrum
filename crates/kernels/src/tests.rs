@@ -1,4 +1,7 @@
-//! Unit tests for the scalar reference and the AVX2 backend.
+//! Direct checks of the scalar reference and the AVX2 backend.
+//!
+//! These call the kernel functions with fixed inputs. The property tests that
+//! compare both backends live in `tests/accept`.
 
 use ferrum_core_types::{f16_to_f32, Backend, DType, FerrumError, GemmArgs, Kernels, RopeArgs};
 

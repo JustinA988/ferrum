@@ -1,3 +1,4 @@
+# CPU Llama inference. Each member's description says what that crate owns.
 [workspace]
 resolver = "2"
 members = [

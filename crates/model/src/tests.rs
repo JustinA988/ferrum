@@ -1,4 +1,7 @@
-//! Load and forward checks against a tiny in-memory GGUF.
+//! Load and forward checks on a tiny GGUF built in the test.
+//!
+//! The model is small enough to run without a downloaded file. The tests check
+//! logit shape, the `position0` rule, and rejection of a bias tensor.
 
 use std::collections::HashMap;
 

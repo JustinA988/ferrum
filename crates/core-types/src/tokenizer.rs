@@ -1,4 +1,8 @@
-//! Tokenizer trait and the GGML token-type codes.
+//! Encode and decode contract, and the GGML token-type integers.
+//!
+//! `encode` turns text into ids. `decode` turns ids back into text.
+//! `TOKEN_NORMAL` through `TOKEN_BYTE` are the `tokenizer.ggml.token_type`
+//! values stored in GGUF. The SentencePiece implementation is `ferrum-tokenizer`.
 
 use crate::error::FerrumError;
 

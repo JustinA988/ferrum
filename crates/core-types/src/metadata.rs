@@ -1,4 +1,9 @@
-//! GGUF metadata types and helpers for reading required fields.
+//! Owned GGUF metadata and the view a loader exposes.
+//!
+//! `MetadataValue` is one decoded value. `MetadataView::get` is how the model
+//! reads keys without depending on the file crate. `meta_u32`, `meta_f32`, and
+//! `meta_str` return `FerrumError` when a required key is missing or has the
+//! wrong type. The optional helpers return `None` when the key is absent.
 
 use crate::error::FerrumError;
 

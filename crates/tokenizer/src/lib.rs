@@ -1,8 +1,9 @@
 //! Llama SentencePiece tokenizer loaded from GGUF metadata.
 //!
-//! Revision 1 accepts `tokenizer.ggml.model == "llama"` only. Segmentation follows
-//! llama.cpp's SPM session: a leading metaspace, then greedy merges ordered by
-//! piece score. This is not unigram Viterbi.
+//! `from_metadata` accepts `tokenizer.ggml.model == "llama"` only. Encoding
+//! follows llama.cpp's SPM session: a leading metaspace, then greedy merges
+//! ordered by piece score. This is not unigram Viterbi. Byte fallback uses the
+//! `<0xHH>` pieces. User-defined pieces are taken out of the text before that split.
 
 #![forbid(unsafe_code)]
 

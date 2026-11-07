@@ -1,4 +1,10 @@
-//! Kernel backend choice and the numeric operations a backend must provide.
+//! Numeric operations every backend implements.
+//!
+//! `Kernels` covers RMSNorm, SiLU, RoPE, softmax, dequant, GEMV, and GEMM.
+//! Activations cross the trait as `f32`. Weights stay packed bytes. A bad
+//! length or an unsupported dtype returns `FerrumError::Kernel`.
+//! `Backend::Avx512` and `Backend::Neon` name hardware revision 1 does not select.
+//! RoPE rotates adjacent pairs, matching `GGML_ROPE_TYPE_NORMAL`.
 
 use crate::dtype::DType;
 use crate::error::FerrumError;

@@ -1,4 +1,9 @@
-`fuzz/fuzz_targets/gguf_parse.rs` calls `ferrum_gguf::load` on arbitrary bytes and asserts that the call returns a `Result`. A panic is a failure.
+# GGUF loader fuzz target
+
+`fuzz/fuzz_targets/gguf_parse.rs` calls `ferrum_gguf::load` on arbitrary bytes.
+The call must return a `Result`. A panic is a failure. `Err` is a successful
+rejection of a bad file. cargo-fuzz stores new inputs under
+`fuzz/corpus/gguf_parse/`. That directory is gitignored.
 
 ### Run
 

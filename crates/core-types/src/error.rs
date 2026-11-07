@@ -1,4 +1,8 @@
-//! Library errors and the OpenAI error JSON envelope.
+//! Errors returned by the library, and the JSON an HTTP handler sends.
+//!
+//! `FerrumError` is what loaders, kernels, the model, and the scheduler return.
+//! `ApiErrorEnvelope` is the OpenAI error object: `error.message`, `error.type`,
+//! `error.param`, and `error.code`. The server maps one onto the other.
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct ApiErrorEnvelope {

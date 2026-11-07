@@ -1,8 +1,9 @@
-//! OpenAI-compatible HTTP API on actix-web.
+//! OpenAI-compatible HTTP API.
 //!
-//! Serves `GET /health`, `GET /v1/models`, and `POST /v1/completions`.
-//! Revision 1 answers those routes with the mock completion. Inference is not
-//! run on this runtime.
+//! Routes are `GET /health`, `GET /v1/models`, and `POST /v1/completions`,
+//! including the streaming form. Revision 1 answers them from the mock
+//! completion in `ferrum-core-types`. Handlers on the actix runtime do not run
+//! a forward pass. A real engine would be called from a dedicated OS thread.
 
 #![forbid(unsafe_code)]
 

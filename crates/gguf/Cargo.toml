@@ -3,7 +3,7 @@ name = "ferrum-gguf"
 version.workspace = true
 edition.workspace = true
 publish.workspace = true
-description = "Read GGUF weights by mapping the file into memory"
+description = "Memory-mapped reader for little-endian GGUF v2 and v3"
 
 [dependencies]
 ferrum-core-types = { path = "../core-types" }

@@ -1,5 +1,9 @@
 # Architecture
 
+What revision 1 builds, the crate each piece lives in, and the contracts those
+crates implement. Public items in `ferrum-core-types` do not change without a
+new revision.
+
 Interface revision **1**. Frozen on 2026-11-04.
 
 Public items in `ferrum-core-types` are the contract. These entry points are frozen with them: `ferrum_gguf::load`, `ferrum_kernels::scalar`, `ferrum_kernels::select`, `ferrum_tokenizer::from_metadata`, and the mock helpers in `ferrum_core_types`.

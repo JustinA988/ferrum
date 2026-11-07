@@ -1,4 +1,10 @@
-//! Llama hyperparameters and the causal-model trait a forward pass implements.
+//! Llama shape, tensor names, and the forward-pass trait.
+//!
+//! `llama_config` requires `general.architecture == "llama"` and reads the
+//! `llama.*` keys, using the defaults in `docs/ARCHITECTURE.md`.
+//! `CausalModel::forward` is teacher-forced: `position0` must equal the slot's
+//! sequence length, and the call appends one KV row per input token. Logits
+//! are row-major `[token][vocab]`. Cached K is post-RoPE. Cached V is not.
 
 use crate::error::FerrumError;
 use crate::ids::SlotId;

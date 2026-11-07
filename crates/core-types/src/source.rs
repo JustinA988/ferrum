@@ -1,4 +1,9 @@
-//! Tensor descriptors and the read-only view a GGUF file exposes.
+//! Read-only view of a GGUF file.
+//!
+//! `TensorDesc` is one tensor's name, shape, dtype, and offset. `GgufModel`
+//! returns metadata and borrowed tensor bytes. The bytes stay in the mapped
+//! file. Callers do not copy the payload. `format_gguf_dump` is the text a
+//! loader's `dump` method must match.
 
 use crate::dtype::{ggml_type_name, shape_elements, tensor_nbytes, DType};
 use crate::error::FerrumError;

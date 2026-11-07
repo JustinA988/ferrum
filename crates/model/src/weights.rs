@@ -1,4 +1,9 @@
-//! Weight checks, embedding lookup, and the matrix-vector used by each layer.
+//! Weight lookup for the Llama graph.
+//!
+//! `validate_weights` requires the tensor set in `docs/ARCHITECTURE.md` and
+//! rejects a bias or any other unexpected name. `embed_token` copies one
+//! vocabulary row. `linear` multiplies a named matrix by an activation.
+//! `dequant_weight` expands a packed tensor to `f32`.
 
 use std::collections::HashSet;
 

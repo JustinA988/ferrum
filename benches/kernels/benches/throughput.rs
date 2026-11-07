@@ -1,6 +1,7 @@
-//! Measures GEMV bytes per second and GEMM FLOP/s for the selected backend.
+//! GEMV bytes per second and GEMM FLOP/s for the backend `select` returns.
 //!
-//! A single invocation is not the five-trial report recorded in `docs/STATUS.md`.
+//! Criterion times one shape of each. The five-trial median in `docs/STATUS.md`
+//! is a separate release measurement. This file does not record that number.
 
 use std::hint::black_box;
 use std::time::Duration;

@@ -1,8 +1,7 @@
-//! Formulas shared by the scalar reference and the AVX2 backend.
+//! Formulas both backends call.
 //!
-//! Sharing them keeps angles, the SiLU definition, and softmax's maximum on
-//! one code path so both backends agree where the contract demands identical
-//! results.
+//! SiLU, the RoPE angle, and softmax's max live here so the scalar and AVX2
+//! paths share one definition where the contract requires the same result.
 
 /// `x * sigmoid(x)` with `sigmoid(x) = 1 / (1 + exp(-x))`.
 #[inline]

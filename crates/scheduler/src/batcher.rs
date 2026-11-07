@@ -1,4 +1,13 @@
-//! Greedy continuous batcher. Prefill samples the first new token from its last logits row.
+//! Greedy batcher behind `ContinuousBatcher`.
+//!
+//! Prefill forwards the prompt and samples the first new token from the last
+//! logits row. Decode forwards that sampled id at the next position. It does
+//! not run the prompt again. Sampling is argmax. `max_new_tokens == 0` finishes
+//! with `FinishReason::Length` and emits no token.
+//!
+//! If a later sequence fails in the same step, an earlier sequence that already
+//! emitted a token is restored: the token is dropped, its KV row is removed,
+//! and the sequence can be stepped again.
 
 use ferrum_core_types::{
     argmax, CausalModel, FerrumError, FinishReason, RequestId, SamplingParams, Scheduler,

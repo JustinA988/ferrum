@@ -3,7 +3,7 @@ name = "ferrum-core-types"
 version.workspace = true
 edition.workspace = true
 publish.workspace = true
-description = "Shared types for GGUF loading, inference, and the OpenAI API"
+description = "Revision 1 types: dtypes, model and kernel traits, the KV cache, the scheduler, and the OpenAI completion API"
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }

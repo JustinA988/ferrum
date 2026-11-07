@@ -1,12 +1,12 @@
-//! Scalar and AVX2+FMA kernels.
+//! Scalar reference and the AVX2+FMA backend.
 //!
-//! [`scalar`] is the reference implementation of [`ferrum_core_types::Kernels`].
-//! [`select`] returns the AVX2+FMA backend only when both features are detected
-//! at runtime. Revision 1 never returns [`ferrum_core_types::Backend::Avx512`].
-//! Neon is not implemented, so `aarch64` gets the scalar backend.
+//! `scalar` implements `Kernels` in plain `f32` and is the reference the SIMD
+//! path is checked against. `select` returns AVX2+FMA when the CPU has both
+//! features, and scalar otherwise. Revision 1 never returns `Backend::Avx512`.
+//! `aarch64` gets the scalar backend.
 //!
-//! `unsafe` is confined to the AVX2 module. GEMM fans tokens out through rayon
-//! on the calling thread; it does not run on an async runtime.
+//! `unsafe` stays in the AVX2 module. GEMM splits tokens with rayon on the
+//! thread that called the kernel. It does not start work on an async runtime.
 
 #![deny(unsafe_code)]
 

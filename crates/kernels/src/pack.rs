@@ -1,4 +1,7 @@
-//! Little-endian loads for packed weights. Short buffers return `None`.
+//! Little-endian reads of packed weight bytes.
+//!
+//! `f32`, `f16`, and Q8_0 blocks are loaded from `&[u8]`. A buffer shorter than
+//! the requested value returns `None` instead of reading past the end.
 
 use ferrum_core_types::{f16_to_f32, DType, Q8_0_BLOCK, Q8_0_BLOCK_BYTES};
 

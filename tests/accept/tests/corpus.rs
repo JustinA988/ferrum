@@ -1,4 +1,7 @@
-//! Loads the frozen tokenizer corpus used by the acceptance tests.
+//! Loads the frozen tokenizer corpus.
+//!
+//! `corpus/wave1.txt` is 200 lines. The tokenizer acceptance tests encode those
+//! lines. The strings in the file stay fixed.
 
 #![forbid(unsafe_code)]
 

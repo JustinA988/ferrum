@@ -1,5 +1,9 @@
 # Status
 
+Release measurements only. A check that has not been run is not listed here.
+The host, the oracle build, and the weight files are named so a number can be
+reproduced.
+
 Measured on Windows x86_64 with AVX2+FMA, rustc/cargo 1.99.1.
 
 Oracle: llama.cpp tag `b12128`, commit `a01dff908b9c9311d7af316bba3c918063749bd0`.

@@ -1,4 +1,10 @@
-//! Requests, sampling parameters, and the step events a scheduler emits.
+//! Work the scheduler accepts and the events one step returns.
+//!
+//! `SubmitRequest` is a tokenized prompt plus sampling settings. Revision 1
+//! samples with argmax, so `temperature` must be 0. `step` emits at most one
+//! new token per active sequence, runs waiting decodes before new prefill, and
+//! stays inside the token budget. Each result is `StepEvent::Token` or
+//! `StepEvent::Finished`.
 
 use crate::engine::FinishReason;
 use crate::error::FerrumError;

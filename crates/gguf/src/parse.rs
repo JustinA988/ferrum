@@ -1,7 +1,9 @@
-//! Panic-free little-endian GGUF v2/v3 reader.
+//! Little-endian GGUF v2 and v3 decoder.
 //!
-//! Counts are turned into allocations only after they fit in the bytes still
-//! left in the map. Overflow and a short buffer are [`FerrumError::Gguf`].
+//! Reads the header, the metadata pairs, and the tensor directory from a byte
+//! slice. A count becomes an allocation only after it fits in the bytes still
+//! left. A short buffer, an overflow, bad UTF-8, or an illegal bool is
+//! `FerrumError::Gguf`. Malformed input returns that error. It does not panic.
 
 use std::collections::{HashMap, HashSet};
 use std::fs::{File, OpenOptions};

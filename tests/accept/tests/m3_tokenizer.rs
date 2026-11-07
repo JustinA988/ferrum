@@ -1,4 +1,9 @@
-//! Checks Llama SentencePiece encode and decode against the pinned corpus.
+//! SentencePiece acceptance on the frozen corpus.
+//!
+//! The in-process round trip always runs. Loading a GGUF tokenizer and comparing
+//! ids with `llama-tokenize` are ignored unless you pass `--ignored` with
+//! `FERRUM_MODEL` set to the GGUF and `FERRUM_LLAMA_CPP` set to the pinned
+//! llama.cpp directory.
 
 #![forbid(unsafe_code)]
 

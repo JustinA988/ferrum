@@ -1,4 +1,8 @@
-# Format, clippy, and workspace tests.
+# Continuous integration for the ferrum workspace.
+#
+# On every push and pull request: rustfmt --check, clippy with warnings denied,
+# and `cargo test --workspace` on stable. Acceptance tests marked ignored, which
+# need a GGUF file and a pinned llama.cpp build, are not part of this job.
 name: ci
 
 on:

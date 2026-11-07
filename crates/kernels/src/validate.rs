@@ -1,4 +1,7 @@
-//! Shape checks shared by every backend so mismatches return the same error.
+//! Shape checks run before any arithmetic.
+//!
+//! Each backend calls these first, so a bad length, a zero dimension, or an
+//! unsupported dtype becomes the same `FerrumError::Kernel` on scalar and AVX2.
 
 use ferrum_core_types::{DType, FerrumError, GemmArgs, RopeArgs, Q8_0_BLOCK, Q8_0_BLOCK_BYTES};
 

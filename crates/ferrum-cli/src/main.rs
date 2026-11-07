@@ -1,7 +1,8 @@
-//! Command line for the ferrum server.
+//! `ferrum` command line.
 //!
-//! `ferrum serve --mock` starts the mock OpenAI API. Without `--mock` the
-//! process exits, because revision 1 does not wire a model into the server.
+//! `ferrum serve --mock` binds the mock OpenAI API on `127.0.0.1:8080` unless
+//! `--bind` is set. Without `--mock` the process exits, because revision 1
+//! does not connect this server to a loaded model.
 
 #![forbid(unsafe_code)]
 

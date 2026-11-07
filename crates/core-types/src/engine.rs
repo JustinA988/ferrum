@@ -1,4 +1,9 @@
-//! Completion request, response, and mock payloads for the OpenAI HTTP API.
+//! OpenAI `/v1/completions` types and the mock reply.
+//!
+//! `CompletionRequest` is the body a client posts. `Completion` is the blocking
+//! response and `CompletionChunk` is one server-sent event. `mock_completion`
+//! builds the fixed reply revision 1 serves. `CompletionEngine` is what a real
+//! engine implements. The HTTP crate depends on that trait, not on the model.
 
 use crate::error::FerrumError;
 use serde::{Deserialize, Serialize};

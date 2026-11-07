@@ -1,4 +1,9 @@
-//! Dense f32 key/value storage, one slot per sequence.
+//! Dense `f32` key/value storage, one slot per sequence.
+//!
+//! Each slot holds `n_layers` by `max_seq_len` positions. A position stores K,
+//! then V, for every KV head. `append_layer` fills the open token.
+//! `commit_token` publishes it. `uncommit_token` and `abandon_partial` drop a
+//! token the caller decided not to keep, without freeing the slot.
 
 use ferrum_core_types::{FerrumError, KvPool, KvPoolConfig, SlotId};
 

@@ -1,4 +1,9 @@
-//! GGML dtypes ferrum computes: F32, F16, and Q8_0.
+//! Compute dtypes and their stored sizes.
+//!
+//! F32, F16, and Q8_0 are the formats a forward pass executes. A Q8_0 block is
+//! 34 bytes: a binary16 scale and 32 `i8` values. Other ggml type ids can be
+//! named for a file dump, and `tensor_nbytes` rejects them. `f16_to_f32` is
+//! the binary16 conversion every backend matches bit for bit.
 
 use crate::error::FerrumError;
 

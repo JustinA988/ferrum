@@ -1,9 +1,10 @@
-//! Stored byte sizes for ggml tensor types.
+//! Stored byte size of each ggml tensor type.
 //!
-//! Sizes match upstream ggml `static_assert`s with `QK_K` = 256. Deprecated
-//! ids 4 and 5 (`q4_2`, `q4_3`) and the removed interleave ids are size 0 in
-//! current ggml, so they are omitted: a reader cannot bounds-check a layout
-//! it cannot size.
+//! Sizes match upstream ggml with `QK_K` = 256. Deprecated type ids 4 and 5
+//! (`q4_2`, `q4_3`) and the removed interleave ids have size 0 there, so they
+//! are omitted: a reader cannot bounds-check a layout it cannot size. F32,
+//! F16, and Q8_0 are the types a forward pass computes. Every other sized type
+//! is still checked, so a file that contains one can load.
 
 use ferrum_core_types::FerrumError;
 

@@ -1,4 +1,10 @@
-//! One Llama forward: embed, attention, SwiGLU, and logits.
+//! One Llama stack: embedding, attention, SwiGLU, and logits.
+//!
+//! Each token is RMSNorm, grouped-query attention, a residual add, then the
+//! feed-forward block and a second residual. RoPE rotates adjacent pairs.
+//! `forward` requires `position0` to equal the slot's sequence length and
+//! appends one KV row per token. If a later token in the same call fails, the
+//! cache is rewound to the length it had on entry.
 
 use ferrum_core_types::{
     llama_config, llama_tensor, CausalModel, FerrumError, GgufModel, Kernels, KvPool, KvPoolConfig,

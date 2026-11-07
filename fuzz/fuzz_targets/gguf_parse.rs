@@ -1,7 +1,8 @@
 //! Fuzz target for the GGUF loader.
 //!
-//! Feeds arbitrary bytes to `ferrum_gguf::load`. A panic is a failure. A
-//! returned error is success.
+//! Passes arbitrary bytes to `ferrum_gguf::load`. A panic is a failure. Any
+//! returned `Result`, including `Err`, is success: a malformed file must be
+//! rejected, not crashed on. Run it with the command in `fuzz/README.md`.
 
 #![no_main]
 

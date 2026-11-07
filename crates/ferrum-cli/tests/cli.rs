@@ -1,4 +1,7 @@
-//! Checks `ferrum serve` argument parsing and the missing-engine exit.
+//! Process-level checks of `ferrum serve`.
+//!
+//! Spawns the binary and checks a usage error, an unknown flag, a bad bind
+//! address, and the non-zero exit when `--mock` is left off.
 
 use std::process::{Command, Output};
 

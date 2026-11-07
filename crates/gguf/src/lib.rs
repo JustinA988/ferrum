@@ -1,13 +1,12 @@
-//! Memory-mapped GGUF loader.
+//! Memory-mapped GGUF reader.
 //!
-//! `unsafe` is used only to create the read-only map. [`load`] accepts
-//! little-endian GGUF versions 2 and 3. Metadata is owned. Tensor payloads are
-//! borrowed from the map.
+//! `load` opens a little-endian GGUF v2 or v3 file and returns `GgufFile`.
+//! Metadata is copied into owned values. Tensor bytes are borrowed from the
+//! map, so the file must stay unchanged for the life of that map. `unsafe` is
+//! used only to create the map.
 //!
-//! [`GgufFile`] implements [`ferrum_core_types::GgufModel`] and
-//! [`ferrum_core_types::MetadataView`]. `dump` equals
-//! [`ferrum_core_types::format_gguf_dump`] for the same version, alignment,
-//! metadata length, and tensors.
+//! `GgufFile` implements `GgufModel` and `MetadataView`. Its `dump` text matches
+//! `format_gguf_dump` for the same version, alignment, metadata, and tensors.
 
 mod layout;
 mod parse;

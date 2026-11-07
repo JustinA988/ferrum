@@ -3,7 +3,7 @@ name = "ferrum-tokenizer"
 version.workspace = true
 edition.workspace = true
 publish.workspace = true
-description = "Llama SentencePiece tokenizer read from GGUF metadata"
+description = "Llama SentencePiece encoder and decoder loaded from GGUF metadata"
 
 [dependencies]
 ferrum-core-types = { path = "../core-types" }

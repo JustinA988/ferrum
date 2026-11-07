@@ -1,8 +1,9 @@
-//! Shared types for loading a GGUF model, running it, and serving completions.
+//! Types shared by every ferrum crate.
 //!
-//! This is revision 1 of the ferrum interface: dtypes, errors, the kernel and
-//! model traits, the KV cache, the scheduler, the tokenizer, and the OpenAI
-//! request and response shapes.
+//! This is revision 1 of the public interface: dtypes, errors, GGUF metadata,
+//! the kernel and model traits, the KV cache, the scheduler, the tokenizer,
+//! and the OpenAI completion shapes. Other crates implement these traits.
+//! They do not add methods to them.
 
 #![forbid(unsafe_code)]
 

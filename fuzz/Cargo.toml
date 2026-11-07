@@ -6,7 +6,7 @@ name = "ferrum-fuzz"
 version = "0.0.0"
 edition = "2021"
 publish = false
-description = "Fuzz target for the GGUF loader"
+description = "cargo-fuzz target that must reject a malformed GGUF without panicking"
 
 [package.metadata]
 cargo-fuzz = true

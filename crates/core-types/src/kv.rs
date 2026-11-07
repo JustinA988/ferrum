@@ -1,4 +1,9 @@
-//! Key/value cache trait. Append does not advance the sequence; commit does.
+//! Key/value cache used by attention.
+//!
+//! The pool is sized up front. `append_layer` writes one layer's K and V for
+//! the token in progress and leaves `seq_len` unchanged. K is already rotated.
+//! V is not. `commit_token` advances `seq_len` by one after every layer has
+//! appended. `k` and `v` return a single position.
 
 use crate::error::FerrumError;
 use crate::ids::SlotId;

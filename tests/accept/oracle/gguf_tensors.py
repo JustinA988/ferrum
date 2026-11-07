@@ -1,7 +1,9 @@
-"""Tensor list from the pinned llama.cpp gguf reader.
+"""Tensor list from the pinned llama.cpp GGUF reader.
 
-Prints a JSON array of {name, shape, ggml_type} in file order.
-`shape` is GGUF dimension order (ne[0] first), not the reversed NumPy view.
+Prints a JSON array of {name, shape, ggml_type} in file order. `shape` is
+GGUF dimension order, with ne[0] first, not the reversed NumPy view. The
+GGUF acceptance test compares this list with `ferrum_gguf::load`. The script
+is an offline check. The server does not import it.
 """
 
 import json

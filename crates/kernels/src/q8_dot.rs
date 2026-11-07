@@ -1,8 +1,9 @@
-//! Q8_0 matmul matching llama.cpp/ggml: quantize the f32 activation to Q8_0,
-//! then `q8_0 · q8_0` with integer products and f16 scales.
+//! Q8_0 product used by GEMV and GEMM.
 //!
-//! Weight-only dequant · f32 (the old path) disagrees with ggml on near-ties and
-//! fails M4 top-1 on short prompts.
+//! The activation row is quantized to Q8_0. Each block is then an integer
+//! product of the two `i8` runs, scaled by the product of their binary16
+//! scales. That is the ggml `q8_0 · q8_0` product. A thread-local buffer holds
+//! the quantized activation so a matmul does not allocate per row.
 
 use std::cell::RefCell;
 

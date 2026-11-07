@@ -3,7 +3,7 @@ name = "ferrum-cli"
 version.workspace = true
 edition.workspace = true
 publish.workspace = true
-description = "Command line for the ferrum server"
+description = "ferrum serve command. --mock binds the mock OpenAI API"
 
 [[bin]]
 name = "ferrum"

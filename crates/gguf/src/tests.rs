@@ -1,4 +1,7 @@
-//! Parser tests for alignment, metadata, tensor layout, and corrupt input.
+//! Parser tests on GGUF bytes built in the test.
+//!
+//! Covers alignment, every metadata type, tensor bounds, duplicate names, and
+//! inputs that must return `FerrumError::Gguf` instead of panicking.
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};

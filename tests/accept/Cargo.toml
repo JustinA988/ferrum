@@ -3,7 +3,7 @@ name = "ferrum-accept"
 version.workspace = true
 edition.workspace = true
 publish.workspace = true
-description = "Checks ferrum against its contract and a pinned llama.cpp build"
+description = "Acceptance tests for the frozen contract and a pinned llama.cpp build"
 
 [dependencies]
 ferrum-core-types = { path = "../../crates/core-types" }
